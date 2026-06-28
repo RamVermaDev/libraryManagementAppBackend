@@ -1,5 +1,5 @@
 import express from 'express'
-import { loginUser, signupUser } from './controllers/userController.mjs'
+import { loginUser, signupUser, updateProfile } from './controllers/userController.mjs'
 import { createLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
 
@@ -11,6 +11,7 @@ routes.get('/', (req, res) => {
 
 routes.post('/api/register', signupUser)
 routes.post('/api/login', loginUser)
+routes.put('/api/profile', authenticate, updateProfile)
 
 routes.post('/api/createlibrary', authenticate, createLibrary )
 

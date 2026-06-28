@@ -161,4 +161,72 @@ const loginUser = async (req, res) => {
     }
 };
 
-export { signupUser, loginUser }
+const updateProfile = async (req, res) => {
+    try {
+        let { name, email } = req.body;
+
+        if (!name || !email) {
+            return res.status(400).json({
+                success: false,
+                message: "Name and email are required."
+            });
+        }
+
+        name = name.trim();
+        email = email.trim().toLowerCase();
+
+        const existingUser = await userModel.findOne({
+            email,
+            isDeleted: false,
+            _id: { $ne: req.user._id }
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                message: "Email is already registered."
+            });
+        }
+
+        const isEmailChanged = req.user.email !== email;
+
+        req.user.name = name;
+        req.user.email = email;
+
+        if (isEmailChanged) {
+            req.user.isEmailVerified = false;
+            req.user.emailVerifiedAt = null;
+        }
+
+        await req.user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully.",
+            user: {
+                id: req.user._id,
+                name: req.user.name,
+                email: req.user.email,
+                isEmailVerified: req.user.isEmailVerified,
+                libraries: req.user.libraries
+            }
+        });
+
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "Email already exists."
+            });
+        }
+
+        console.error("Update Profile Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong. Please try again later."
+        });
+    }
+};
+
+export { signupUser, loginUser, updateProfile }

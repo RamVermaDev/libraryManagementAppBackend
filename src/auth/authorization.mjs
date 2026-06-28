@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { userModel } from "../models/userModel.mjs";
 
 export const authenticate = async (req, res, next) => {
+    console.log('happen1')
 
     try {
 
@@ -22,7 +23,7 @@ export const authenticate = async (req, res, next) => {
         );
 
         const user = await userModel
-            .findById(decoded.id)
+            .findById(decoded.userId)
             .select("-password -refreshToken");
 
         if (!user) {

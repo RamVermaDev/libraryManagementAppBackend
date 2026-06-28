@@ -3,10 +3,12 @@ import { libraryModel } from "../models/libraryModel.mjs";
 import { userModel } from "../models/userModel.mjs";
 
 export const createLibrary = async (req, res) => {
+    console.log('happen')
 
     const session = await mongoose.startSession();
 
     try {
+        console.log('happen')
 
         session.startTransaction();
 

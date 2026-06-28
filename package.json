@@ -1,4 +1,13 @@
 {
+  "name": "library-management-backend",
+  "version": "1.0.0",
+  "description": "Library Management Backend",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+
   "dependencies": {
     "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",

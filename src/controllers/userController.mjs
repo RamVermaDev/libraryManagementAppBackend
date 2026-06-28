@@ -148,6 +148,7 @@ const loginUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 isEmailVerified: user.isEmailVerified,
+                libraries:user.libraries
             }
         });
 

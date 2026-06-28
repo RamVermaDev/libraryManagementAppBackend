@@ -12,6 +12,6 @@ routes.get('/', (req, res) => {
 routes.post('/api/register', signupUser)
 routes.post('/api/login', loginUser)
 
-routes.post('api/createlibrary', authenticate, createLibrary )
+routes.post('/api/createlibrary', authenticate, createLibrary )
 
 export default routes;

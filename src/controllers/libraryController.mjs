@@ -96,3 +96,28 @@ export const createLibrary = async (req, res) => {
         });
     }
 };
+
+export const getOwnerLibraries = async (req, res) => {
+    try {
+        const libraries = await libraryModel
+            .find({
+                ownerId: req.user._id,
+                isDeleted: false
+            })
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            message: "Libraries fetched successfully.",
+            libraries,
+        });
+
+    } catch (error) {
+        console.error("Get Owner Libraries Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error."
+        });
+    }
+};

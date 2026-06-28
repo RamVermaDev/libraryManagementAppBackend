@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from 'jsonwebtoken'
 import { userModel } from "../models/userModel.mjs";
 import { BCRYPT_SALT_ROUND, JWT_SECRET } from "../../config.mjs";
+import sendEmail from "../utils/sendEmail.mjs";
 
 const signupUser = async (req, res) => {
     try {
@@ -229,4 +230,179 @@ const updateProfile = async (req, res) => {
     }
 };
 
-export { signupUser, loginUser, updateProfile }
+const sendEmailVerificationOtp = async (req, res) => {
+    try {
+
+        const user = await userModel.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        if (user.isEmailVerified) {
+            return res.status(400).json({
+                success: false,
+                message: "Email is already verified."
+            });
+        }
+
+        // Generate OTP
+        const otp = Math.floor(
+            100000 + Math.random() * 900000
+        ).toString();
+
+        // Save OTP
+        user.emailVerificationOtp = otp;
+
+        // 10 minutes expiry
+        user.emailVerificationOtpExpires = new Date(
+            Date.now() + 10 * 60 * 1000
+        );
+
+        await user.save();
+
+        await sendEmail({
+            to: user.email,
+            subject: "Verify Your Email",
+            html: `
+                <h2>Library Pro</h2>
+
+                <p>Hello ${user.name},</p>
+
+                <p>Your Email Verification OTP is:</p>
+
+                <h1 style="letter-spacing:8px">
+                    ${otp}
+                </h1>
+
+                <p>
+                    This OTP will expire in
+                    <strong>10 minutes</strong>.
+                </p>
+
+                <p>
+                    If you didn't request this,
+                    please ignore this email.
+                </p>
+            `
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Verification OTP sent successfully."
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error."
+        });
+
+    }
+};
+
+const verifyEmailOtp = async (req, res) => {
+    try {
+
+        const { otp } = req.body;
+
+        // Check OTP is provided
+        if (!otp) {
+            return res.status(400).json({
+                success: false,
+                message: "OTP is required."
+            });
+        }
+
+        // Get logged-in user
+        const user = await userModel.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        // Already verified
+        if (user.isEmailVerified) {
+            return res.status(400).json({
+                success: false,
+                message: "Email is already verified."
+            });
+        }
+
+        // No OTP generated
+        if (
+            !user.emailVerificationOtp ||
+            !user.emailVerificationOtpExpires
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Please request a verification OTP first."
+            });
+        }
+
+        // OTP Expired
+        if (user.emailVerificationOtpExpires < new Date()) {
+
+            user.emailVerificationOtp = undefined;
+            user.emailVerificationOtpExpires = undefined;
+
+            await user.save();
+
+            return res.status(400).json({
+                success: false,
+                message: "OTP has expired. Please request a new OTP."
+            });
+        }
+
+        // OTP Incorrect
+        if (user.emailVerificationOtp !== otp) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid OTP."
+            });
+        }
+
+        // Verify Email
+        user.isEmailVerified = true;
+        user.emailVerifiedAt = new Date();
+
+        // Clear OTP
+        user.emailVerificationOtp = undefined;
+        user.emailVerificationOtpExpires = undefined;
+
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Email verified successfully.",
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                isEmailVerified: user.isEmailVerified,
+                libraries: user.libraries
+            }
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error."
+        });
+
+    }
+}
+
+export { signupUser, loginUser, updateProfile, sendEmailVerificationOtp, verifyEmailOtp }

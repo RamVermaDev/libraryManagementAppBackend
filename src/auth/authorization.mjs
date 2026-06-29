@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import { userModel } from "../models/userModel.mjs";
+import { JWT_SECRET } from "../../config.mjs";
 
 export const authenticate = async (req, res, next) => {
-    console.log('happen1')
 
     try {
 
@@ -19,7 +19,7 @@ export const authenticate = async (req, res, next) => {
 
         const decoded = jwt.verify(
             token,
-            process.env.JWT_SECRET
+            JWT_SECRET
         );
 
         const user = await userModel
@@ -52,6 +52,7 @@ export const authenticate = async (req, res, next) => {
         next();
 
     } catch (error) {
+        console.error("Authentication Error:", error);
 
         return res.status(401).json({
             success: false,

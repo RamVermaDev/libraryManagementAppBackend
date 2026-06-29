@@ -162,6 +162,25 @@ const loginUser = async (req, res) => {
     }
 };
 
+const getCurrentUser = async (req, res) => {
+    try {
+
+        return res.status(200).json({
+            success: true,
+            message: "User fetched successfully.",
+            user: req.user,
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong.",
+        });
+
+    }
+};
+
 const updateProfile = async (req, res) => {
     try {
         let { name, email } = req.body;
@@ -405,4 +424,4 @@ const verifyEmailOtp = async (req, res) => {
     }
 }
 
-export { signupUser, loginUser, updateProfile, sendEmailVerificationOtp, verifyEmailOtp }
+export { signupUser, loginUser, updateProfile, sendEmailVerificationOtp, verifyEmailOtp, getCurrentUser }

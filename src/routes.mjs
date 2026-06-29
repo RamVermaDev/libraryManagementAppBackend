@@ -1,5 +1,5 @@
 import express from 'express'
-import { loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
+import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
 
@@ -14,6 +14,7 @@ routes.post('/api/login', loginUser)
 routes.put('/api/profile', authenticate, updateProfile)
 routes.post('/api/verify-email', authenticate, sendEmailVerificationOtp)
 routes.post('/api/otp-verify', authenticate, verifyEmailOtp)
+routes.get('/api/verify-token', authenticate, getCurrentUser)
 
 routes.post('/api/createlibrary', authenticate, createLibrary )
 routes.get('/api/my-libraries', authenticate, getOwnerLibraries)

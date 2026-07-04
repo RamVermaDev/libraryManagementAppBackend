@@ -120,7 +120,7 @@ const addTask = async (req, res) => {
 const completeTask = async (req, res) => {
   try {
     // Authentication required in production
-    // const userId = req.user.id;
+    const userId = req.user.id;
 
     const { taskId } = req.params;
     const { libraryId } = req.body;
@@ -154,7 +154,7 @@ const completeTask = async (req, res) => {
         _id: libraryId,
 
         // Uncomment after authentication is enabled
-        // ownerId: userId,
+        ownerId: userId,
       })
       .select("_id");
 
@@ -208,11 +208,14 @@ const completeTask = async (req, res) => {
 
 const deleteTask = async (req, res) => {
   try {
+    
     // Authentication required in production
-    // const userId = req.user.id;
+    const userId = req.user.id;
+    
 
     const { taskId } = req.params;
     const { libraryId } = req.body;
+    console.log('deletr')
 
     // 1. Validate required fields
     if (!libraryId) {
@@ -244,7 +247,7 @@ const deleteTask = async (req, res) => {
         _id: libraryId,
 
         // Uncomment after authentication is enabled
-        // ownerId: userId,
+        ownerId: userId,
       })
       .select("_id");
 
@@ -286,7 +289,7 @@ const deleteTask = async (req, res) => {
 const editTask = async (req, res) => {
   try {
     // Authentication required in production
-    // const userId = req.user.id;
+    const userId = req.user.id;
 
     const { taskId } = req.params;
 
@@ -362,7 +365,7 @@ const editTask = async (req, res) => {
         _id: libraryId,
 
         // Uncomment after authentication is enabled
-        // ownerId: userId,
+        ownerId: userId,
       })
       .select("_id");
 
@@ -431,7 +434,9 @@ const editTask = async (req, res) => {
 const getAllTasks = async (req, res) => {
   try {
     // Authentication required in production
-    // const userId = req.user.id;
+    const userId = req.user.id;
+
+    console.log('Workin?')
 
     const { libraryId } = req.params;
 
@@ -444,14 +449,17 @@ const getAllTasks = async (req, res) => {
     }
 
     // 2. Verify library exists and belongs to user
+    console.log(libraryId)
     const library = await libraryModel
       .findOne({
         _id: libraryId,
 
         // Uncomment after authentication is enabled
-        // ownerId: userId,
+        ownerId: userId,
       })
       .select("_id");
+
+      console.log(library)
 
     if (!library) {
       return res.status(404).json({
@@ -471,6 +479,8 @@ const getAllTasks = async (req, res) => {
       });
 
     // 4. Return tasks
+
+    console.log(tasks)
     return res.status(200).json({
       success: true,
       message: "Tasks fetched successfully",

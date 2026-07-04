@@ -28,9 +28,9 @@ routes.post('/api/addstudent', addStudent)
 
 //API related to TASK
 routes.post('/api/addtask', authenticate, addTask)
-routes.patch("/api/:taskId/completetask", completeTask)
-routes.delete("/api/:taskId/deletetask", deleteTask)
-routes.patch("/api/:taskId/edittask", editTask)
-routes.get("/api/:libraryId/getalltask", getAllTasks)
+routes.patch("/api/:taskId/completetask", authenticate, completeTask)
+routes.delete("/api/:taskId/deletetask", authenticate, deleteTask)
+routes.patch("/api/:taskId/edittask", authenticate, editTask)
+routes.get("/api/:libraryId/getalltask", authenticate, getAllTasks)
 
 export default routes;

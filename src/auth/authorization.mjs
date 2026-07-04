@@ -5,6 +5,7 @@ import { JWT_SECRET } from "../../config.mjs";
 export const authenticate = async (req, res, next) => {
 
     try {
+        console.log('auth')
 
         const authHeader = req.headers.authorization;
 

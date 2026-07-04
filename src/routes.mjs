@@ -2,6 +2,8 @@ import express from 'express'
 import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
+import { addStudent } from './controllers/studentController.mjs'
+import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 
 const routes = express.Router()
 
@@ -9,6 +11,7 @@ routes.get('/', (req, res) => {
     return res.send('Hello Routes')
 })
 
+//User Related API
 routes.post('/api/register', signupUser)
 routes.post('/api/login', loginUser)
 routes.put('/api/profile', authenticate, updateProfile)
@@ -16,7 +19,18 @@ routes.post('/api/verify-email', authenticate, sendEmailVerificationOtp)
 routes.post('/api/otp-verify', authenticate, verifyEmailOtp)
 routes.get('/api/verify-token', authenticate, getCurrentUser)
 
-routes.post('/api/createlibrary', authenticate, createLibrary )
+//Library related API
+routes.post('/api/createlibrary', authenticate, createLibrary)
 routes.get('/api/my-libraries', authenticate, getOwnerLibraries)
+
+//Student related API
+routes.post('/api/addstudent', addStudent)
+
+//API related to TASK
+routes.post('/api/addtask', authenticate, addTask)
+routes.patch("/api/:taskId/completetask", completeTask)
+routes.delete("/api/:taskId/deletetask", deleteTask)
+routes.patch("/api/:taskId/edittask", editTask)
+routes.get("/api/:libraryId/getalltask", getAllTasks)
 
 export default routes;

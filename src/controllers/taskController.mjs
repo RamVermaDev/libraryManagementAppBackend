@@ -436,8 +436,6 @@ const getAllTasks = async (req, res) => {
     // Authentication required in production
     const userId = req.user.id;
 
-    console.log('Workin?')
-
     const { libraryId } = req.params;
 
     // 1. Validate library ID
@@ -449,7 +447,6 @@ const getAllTasks = async (req, res) => {
     }
 
     // 2. Verify library exists and belongs to user
-    console.log(libraryId)
     const library = await libraryModel
       .findOne({
         _id: libraryId,
@@ -480,7 +477,6 @@ const getAllTasks = async (req, res) => {
 
     // 4. Return tasks
 
-    console.log(tasks)
     return res.status(200).json({
       success: true,
       message: "Tasks fetched successfully",

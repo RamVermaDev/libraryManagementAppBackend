@@ -2,33 +2,66 @@ import mongoose from "mongoose";
 import { studentModel } from "../models/studentModel.mjs";
 import { feeRecordModel } from "../models/feeRecordModel.mjs";
 import { paymentModel } from "../models/payementModel.mjs";
+import { libraryModel } from "../models/libraryModel.mjs";
 
 const addStudent = async (req, res) => {
     const session = await mongoose.startSession();
 
     try {
+        const userId = req.user.id
+
         const {
+            libraryId,
             name,
             phone,
-            gender,
             idProof,
-
             planId,
             programDays,
             startDate,
             expireDate,
-
             amount,
             discount = 0,
             paidAmount = 0,
             paymentMode,
-            libraryId
+            notes,
         } = req.body;
 
         // Get library from authenticated user
         //if I can use then i will
         //const libraryId = req.user.libraryId;
 
+        if (!libraryId) {
+            return res.status(400).json({
+                success: false,
+                message: "Library ID is required",
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        //ALSO IN SESSION WENEED TO ADD LIBRARY TOTAL STUDENT
+
+
+
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
         // 1. VALIDATE REQUIRED FIELDS
 
         if (
@@ -199,7 +232,7 @@ const addStudent = async (req, res) => {
 
                     name: normalizedName,
                     phone: normalizedPhone,
-                    gender,
+
                     idProof: idProof?.trim() || null,
 
                     joiningDate: parsedStartDate,
@@ -214,6 +247,8 @@ const addStudent = async (req, res) => {
 
                     lastPaymentDate:
                         numericPaidAmount > 0 ? new Date() : null,
+
+                    notes: notes?.trim() || null,
                 },
             ],
             { session }
@@ -322,4 +357,370 @@ const addStudent = async (req, res) => {
     }
 };
 
-export { addStudent }
+const getStudents = async (req, res) => {
+    try {
+        // 1. GET AUTHENTICATED USER
+        const userId = req.user.id;
+
+        // 2. GET LIBRARY ID
+        const { libraryId } = req.params;
+
+        // 3. GET PAGINATION VALUES
+        const page = Math.max(Number(req.query.page) || 1, 1);
+
+        const limit = Math.min(
+            Math.max(Number(req.query.limit) || 20, 1),
+            100
+        );
+
+        const skip = (page - 1) * limit;
+
+        // 4. VALIDATE LIBRARY ID
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        // 5. CHECK LIBRARY OWNERSHIP
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        // 6. FETCH STUDENTS
+        const students = await studentModel
+            .find({
+                library: libraryId,
+            })
+            .sort({
+                createdAt: -1,
+                _id: -1,
+            })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        // 7. CHECK IF MORE STUDENTS EXIST
+        const hasMore = students.length > limit;
+
+        if (hasMore) {
+            students.pop();
+        }
+
+        // 8. SEND RESPONSE
+        return res.status(200).json({
+            success: true,
+            message: "Students fetched successfully",
+            data: {
+                students,
+                pagination: {
+                    page,
+                    limit,
+                    hasMore,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("GET STUDENTS ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to load students",
+        });
+    }
+};
+
+
+const getStudentSummary = async (req, res) => {
+    try {
+        // 1. GET LOGGED-IN USER ID
+        const userId = req.user.id;
+
+        // 2. GET LIBRARY ID FROM URL
+        const { libraryId } = req.params;
+
+        // 3. VALIDATE LIBRARY ID
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        // 4. CHECK WHETHER THE USER OWNS THIS LIBRARY
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        // 5. CREATE TODAY'S START TIME
+        const today = new Date();
+
+        today.setHours(0, 0, 0, 0);
+
+        // 6. HELPER FUNCTION TO CREATE DATE BOUNDARIES
+        const addDays = (days) => {
+            const date = new Date(today);
+
+            date.setDate(date.getDate() + days);
+
+            return date;
+        };
+
+        // FUTURE DATE BOUNDARIES
+        const day1 = addDays(1);
+        const day4 = addDays(4);
+        const day8 = addDays(8);
+        const day11 = addDays(11);
+
+        // PAST DATE BOUNDARIES
+        const dayMinus3 = addDays(-3);
+        const dayMinus7 = addDays(-7);
+        const dayMinus10 = addDays(-10);
+
+        // 7. CONVERT LIBRARY ID TO OBJECT ID
+        const libraryObjectId = new mongoose.Types.ObjectId(libraryId);
+
+        // 8. CALCULATE ALL STUDENT COUNTS IN ONE DATABASE QUERY
+        const [summary] = await studentModel.aggregate([
+            {
+                $match: {
+                    library: libraryObjectId,
+                    currentExpireDate: {
+                        $ne: null,
+                    },
+                },
+            },
+
+            {
+                $group: {
+                    _id: null,
+
+                    // ALL ACTIVE STUDENTS
+                    active: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $gte: [
+                                        "$currentExpireDate",
+                                        today,
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+
+                    // EXPIRING IN 1–3 DAYS
+                    expiring1To3Days: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        {
+                                            $gte: [
+                                                "$currentExpireDate",
+                                                day1,
+                                            ],
+                                        },
+                                        {
+                                            $lt: [
+                                                "$currentExpireDate",
+                                                day4,
+                                            ],
+                                        },
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+
+                    // EXPIRING IN 4–7 DAYS
+                    expiring4To7Days: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        {
+                                            $gte: [
+                                                "$currentExpireDate",
+                                                day4,
+                                            ],
+                                        },
+                                        {
+                                            $lt: [
+                                                "$currentExpireDate",
+                                                day8,
+                                            ],
+                                        },
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+
+                    // EXPIRING IN 8–10 DAYS
+                    expiring8To10Days: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        {
+                                            $gte: [
+                                                "$currentExpireDate",
+                                                day8,
+                                            ],
+                                        },
+                                        {
+                                            $lt: [
+                                                "$currentExpireDate",
+                                                day11,
+                                            ],
+                                        },
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+
+                    // EXPIRED 1–3 DAYS AGO
+                    expired1To3Days: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        {
+                                            $gte: [
+                                                "$currentExpireDate",
+                                                dayMinus3,
+                                            ],
+                                        },
+                                        {
+                                            $lt: [
+                                                "$currentExpireDate",
+                                                today,
+                                            ],
+                                        },
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+
+                    // EXPIRED 4–7 DAYS AGO
+                    expired4To7Days: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        {
+                                            $gte: [
+                                                "$currentExpireDate",
+                                                dayMinus7,
+                                            ],
+                                        },
+                                        {
+                                            $lt: [
+                                                "$currentExpireDate",
+                                                dayMinus3,
+                                            ],
+                                        },
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+
+                    // EXPIRED 8–10 DAYS AGO
+                    expired8To10Days: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        {
+                                            $gte: [
+                                                "$currentExpireDate",
+                                                dayMinus10,
+                                            ],
+                                        },
+                                        {
+                                            $lt: [
+                                                "$currentExpireDate",
+                                                dayMinus7,
+                                            ],
+                                        },
+                                    ],
+                                },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+                },
+            },
+        ]);
+
+        // 9. SEND RESPONSE
+        return res.status(200).json({
+            success: true,
+            message: "Student summary fetched successfully",
+            data: {
+                active: summary?.active ?? 0,
+
+                expiring: {
+                    days1To3: summary?.expiring1To3Days ?? 0,
+                    days4To7: summary?.expiring4To7Days ?? 0,
+                    days8To10: summary?.expiring8To10Days ?? 0,
+                },
+
+                expired: {
+                    days1To3: summary?.expired1To3Days ?? 0,
+                    days4To7: summary?.expired4To7Days ?? 0,
+                    days8To10: summary?.expired8To10Days ?? 0,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("GET STUDENT SUMMARY ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary }

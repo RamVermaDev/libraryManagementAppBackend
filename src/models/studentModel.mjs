@@ -26,11 +26,12 @@ const studentSchema = new mongoose.Schema(
             match: [/^[6-9]\d{9}$/, "Enter a valid Indian phone number"],
         },
 
-        gender: {
-            type: String,
-            enum: ["Male", "Female", "Other"],
-            default: null,
-        },
+        //REMOVING GENDER FOR NOW
+        // gender: {
+        //     type: String,
+        //     enum: ["Male", "Female", "Other"],
+        //     default: null,
+        // },
 
         idProof: {
             type: String,
@@ -115,6 +116,7 @@ const studentSchema = new mongoose.Schema(
         timestamps: true,
     }
 );
+
 
 
 // Same phone cannot be added twice in one library

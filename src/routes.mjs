@@ -2,7 +2,7 @@ import express from 'express'
 import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, getStudentSummary } from './controllers/studentController.mjs'
+import { addStudent, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 
 const routes = express.Router()
@@ -26,6 +26,10 @@ routes.get('/api/my-libraries', authenticate, getOwnerLibraries)
 //Student related API
 routes.post('/api/addstudent', authenticate, addStudent)
 routes.get('/api/:libraryId/sudentsummary', authenticate, getStudentSummary)
+routes.get('/api/:libraryId/getstudents', authenticate, getStudents)
+routes.get('/api/:libraryId/getactivestudents', authenticate, getActiveStudents)
+routes.get('/api/:libraryId/getexpiredstudents', authenticate, getExpiredStudents)
+routes.get('/api/:libraryId/getexpiringstudents', authenticate, getExpiringStudents)
 
 //API related to TASK
 routes.post('/api/addtask', authenticate, addTask)

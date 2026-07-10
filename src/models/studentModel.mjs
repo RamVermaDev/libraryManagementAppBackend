@@ -99,6 +99,12 @@ const studentSchema = new mongoose.Schema(
             min: 0,
         },
 
+        totalDiscount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
         lastPaymentDate: {
             type: Date,
             default: null,

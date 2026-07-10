@@ -26,6 +26,8 @@ const addStudent = async (req, res) => {
             notes,
         } = req.body;
 
+        
+
         // Get library from authenticated user
         //if I can use then i will
         //const libraryId = req.user.libraryId;
@@ -244,6 +246,7 @@ const addStudent = async (req, res) => {
 
                     totalPaid: numericPaidAmount,
                     totalPending: pendingAmount,
+                    totalDiscount: numericDiscount,
 
                     lastPaymentDate:
                         numericPaidAmount > 0 ? new Date() : null,
@@ -412,6 +415,8 @@ const getStudents = async (req, res) => {
             .limit(limit + 1)
             .lean();
 
+
+        console.log(students)
         // 7. CHECK IF MORE STUDENTS EXIST
         const hasMore = students.length > limit;
 
@@ -438,6 +443,353 @@ const getStudents = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Unable to load students",
+        });
+    }
+};
+
+const getActiveStudents = async (req, res) => {
+    try {
+        console.log('active');
+        // 1. GET AUTHENTICATED USER
+        const userId = req.user.id;
+
+        // 2. GET LIBRARY ID
+        const { libraryId } = req.params;
+
+        // 3. GET PAGINATION VALUES
+        const page = Math.max(Number(req.query.page) || 1, 1);
+
+        const limit = Math.min(
+            Math.max(Number(req.query.limit) || 20, 1),
+            100
+        );
+
+        const skip = (page - 1) * limit;
+
+        // 4. VALIDATE LIBRARY ID
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        // 5. CHECK LIBRARY OWNERSHIP
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        // 6. GET START OF TODAY
+        const today = new Date();
+
+        today.setHours(0, 0, 0, 0);
+
+        // 7. FETCH ONLY ACTIVE STUDENTS
+        const students = await studentModel
+            .find({
+                library: libraryId,
+
+                currentExpireDate: {
+                    $gte: today,
+                },
+            })
+            .sort({
+                createdAt: -1,
+                _id: -1,
+            })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        // 8. CHECK IF MORE STUDENTS EXIST
+        const hasMore = students.length > limit;
+
+        if (hasMore) {
+            students.pop();
+        }
+
+
+        // 9. SEND RESPONSE
+        return res.status(200).json({
+            success: true,
+            message: "Active students fetched successfully",
+            data: {
+                students,
+                pagination: {
+                    page,
+                    limit,
+                    hasMore,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("GET ACTIVE STUDENTS ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to load active students",
+        });
+    }
+};
+
+const getExpiredStudents = async (req, res) => {
+    try {
+        // 1. GET AUTHENTICATED USER
+        const userId = req.user.id;
+
+        // 2. GET LIBRARY ID
+        const { libraryId } = req.params;
+
+        // 3. GET QUERY PARAMETERS
+        const page = Math.max(Number(req.query.page) || 1, 1);
+
+        const limit = Math.min(
+            Math.max(Number(req.query.limit) || 20, 1),
+            100
+        );
+
+        const startDay = Number(req.query.startDay);
+        const endDay = Number(req.query.endDay);
+
+        const skip = (page - 1) * limit;
+
+        // 4. VALIDATE DAY RANGE
+        if (
+            !Number.isInteger(startDay) ||
+            !Number.isInteger(endDay) ||
+            startDay < 1 ||
+            endDay < startDay
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid startDay or endDay",
+            });
+        }
+
+        // 5. VALIDATE LIBRARY ID
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        // 6. CHECK LIBRARY OWNERSHIP
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        // 7. GET START OF TODAY
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // 8. CREATE EXPIRED DATE RANGE
+
+        // Example:
+        // Today = 8 July
+        // startDay = 1 → 7 July
+        // endDay = 3   → 5 July
+
+        const rangeStart = new Date(today);
+        rangeStart.setDate(rangeStart.getDate() - endDay);
+        rangeStart.setHours(0, 0, 0, 0);
+
+        const rangeEnd = new Date(today);
+        rangeEnd.setDate(rangeEnd.getDate() - startDay);
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        // 9. FETCH EXPIRED STUDENTS
+        const students = await studentModel
+            .find({
+                library: libraryId,
+
+                currentExpireDate: {
+                    $gte: rangeStart,
+                    $lte: rangeEnd,
+                },
+            })
+            .sort({
+                currentExpireDate: -1,
+                _id: -1,
+            })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        // 10. CHECK IF MORE STUDENTS EXIST
+        const hasMore = students.length > limit;
+
+        if (hasMore) {
+            students.pop();
+        }
+
+        // 11. SEND RESPONSE
+        return res.status(200).json({
+            success: true,
+            message: "Expired students fetched successfully",
+            data: {
+                students,
+                pagination: {
+                    page,
+                    limit,
+                    hasMore,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("GET EXPIRED STUDENTS ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to load expired students",
+        });
+    }
+};
+
+const getExpiringStudents = async (req, res) => {
+    try {
+        // 1. GET AUTHENTICATED USER
+        const userId = req.user.id;
+
+        // 2. GET LIBRARY ID
+        const { libraryId } = req.params;
+
+        // 3. GET QUERY PARAMETERS
+        const page = Math.max(Number(req.query.page) || 1, 1);
+
+        const limit = Math.min(
+            Math.max(Number(req.query.limit) || 20, 1),
+            100
+        );
+
+        const startDay = Number(req.query.startDay);
+        const endDay = Number(req.query.endDay);
+
+        const skip = (page - 1) * limit;
+
+        // 4. VALIDATE DAY RANGE
+        if (
+            !Number.isInteger(startDay) ||
+            !Number.isInteger(endDay) ||
+            startDay < 1 ||
+            endDay < startDay
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid startDay or endDay",
+            });
+        }
+
+        // 5. VALIDATE LIBRARY ID
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        // 6. CHECK LIBRARY OWNERSHIP
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        // 7. GET START OF TODAY
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // 8. CREATE EXPIRING DATE RANGE
+        //
+        // Example:
+        // Today = 8 July
+        // startDay = 1 → 9 July
+        // endDay = 3   → 11 July
+
+        const rangeStart = new Date(today);
+        rangeStart.setDate(rangeStart.getDate() + startDay);
+        rangeStart.setHours(0, 0, 0, 0);
+
+        const rangeEnd = new Date(today);
+        rangeEnd.setDate(rangeEnd.getDate() + endDay);
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        // 9. FETCH EXPIRING STUDENTS
+        const students = await studentModel
+            .find({
+                library: libraryId,
+
+                currentExpireDate: {
+                    $gte: rangeStart,
+                    $lte: rangeEnd,
+                },
+            })
+            .sort({
+                currentExpireDate: 1,
+                _id: -1,
+            })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        // 10. CHECK IF MORE STUDENTS EXIST
+        const hasMore = students.length > limit;
+
+        if (hasMore) {
+            students.pop();
+        }
+
+
+        // 11. SEND RESPONSE
+        return res.status(200).json({
+            success: true,
+            message: "Expiring students fetched successfully",
+            data: {
+                students,
+                pagination: {
+                    page,
+                    limit,
+                    hasMore,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("GET EXPIRING STUDENTS ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to load expiring students",
         });
     }
 };
@@ -723,4 +1075,4 @@ const getStudentSummary = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary }
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents }

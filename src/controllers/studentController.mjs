@@ -26,7 +26,7 @@ const addStudent = async (req, res) => {
             notes,
         } = req.body;
 
-        
+
 
         // Get library from authenticated user
         //if I can use then i will
@@ -101,6 +101,10 @@ const addStudent = async (req, res) => {
 
         const parsedStartDate = new Date(startDate);
         const parsedExpireDate = new Date(expireDate);
+
+        console.log(startDate);
+        console.log(parsedStartDate);
+        console.log(parsedStartDate.toISOString());
 
 
         // 3. VALIDATE NUMBERS

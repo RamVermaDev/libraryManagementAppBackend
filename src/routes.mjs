@@ -4,8 +4,12 @@ import { createLibrary, getOwnerLibraries } from './controllers/libraryControlle
 import { authenticate } from './auth/authorization.mjs'
 import { addStudent, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
+import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
+import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
+
 
 const routes = express.Router()
+
 
 routes.get('/', (req, res) => {
     return res.send('Hello Routes')
@@ -37,5 +41,13 @@ routes.patch("/api/:taskId/completetask", authenticate, completeTask)
 routes.delete("/api/:taskId/deletetask", authenticate, deleteTask)
 routes.patch("/api/:taskId/edittask", authenticate, editTask)
 routes.get("/api/:libraryId/getalltask", authenticate, getAllTasks)
+
+//API realted to EXPENSE
+routes.post('/api/addexpense', authenticate, addExpense)
+routes.delete('/api/deleteexpense/:expenseId', authenticate, deleteExpense)
+
+//API realted to DASHBOARD
+routes.get("/api/:libraryId/dashboard", dashboard);
+routes.get("/api/:libraryId/getmonthlyrevenue", getMonthlyRevenue);
 
 export default routes;

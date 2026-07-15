@@ -6,6 +6,7 @@ import { addStudent, getActiveStudents, getExpiredStudents, getExpiringStudents,
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
+import { getPayments } from './controllers/payementController.mjs'
 
 
 const routes = express.Router()
@@ -42,12 +43,15 @@ routes.delete("/api/:taskId/deletetask", authenticate, deleteTask)
 routes.patch("/api/:taskId/edittask", authenticate, editTask)
 routes.get("/api/:libraryId/getalltask", authenticate, getAllTasks)
 
-//API realted to EXPENSE
+//API related to EXPENSE
 routes.post('/api/addexpense', authenticate, addExpense)
 routes.delete('/api/deleteexpense/:expenseId', authenticate, deleteExpense)
 
-//API realted to DASHBOARD
+//API related to DASHBOARD
 routes.get("/api/:libraryId/dashboard", dashboard);
 routes.get("/api/:libraryId/getmonthlyrevenue", getMonthlyRevenue);
+
+//API related to PAYEMENT
+routes.get("/api/:libraryId/getpayments", authenticate, getPayments);
 
 export default routes;

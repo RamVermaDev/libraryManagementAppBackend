@@ -111,6 +111,7 @@ const dashboard = async (req, res) => {
 const getMonthlyRevenue = async (req, res) => {
 
     try {
+        console.log('hi')
 
         // const userId = req.user.id;
         const { libraryId } = req.params;

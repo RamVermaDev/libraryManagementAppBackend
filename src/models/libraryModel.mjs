@@ -44,14 +44,17 @@ const librarySchema = new mongoose.Schema({
 
     state: {
         type: String,
-        required: true,
-        trim: true
+
+        trim: true,
+        default: ""
+        
     },
 
     pinCode: {
         type: String,
-        required: true,
-        match: /^\d{6}$/
+        
+        match: /^\d{6}$/,
+        default: ""
     },
 
     // Status

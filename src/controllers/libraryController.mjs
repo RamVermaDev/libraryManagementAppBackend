@@ -18,9 +18,9 @@ export const createLibrary = async (req, res) => {
             libraryName,
             tagLine,
             whatsappNumber,
-            city,
-            state,
-            pinCode,
+            city = '',
+            state = '',
+            pinCode = '',
             totalSeats = 0
         } = req.body;
 
@@ -28,9 +28,7 @@ export const createLibrary = async (req, res) => {
         if (
             !libraryName ||
             !whatsappNumber ||
-            !city ||
-            !state ||
-            !pinCode
+            !city 
         ) {
             await session.abortTransaction();
             session.endSession();
@@ -121,3 +119,76 @@ export const getOwnerLibraries = async (req, res) => {
         });
     }
 };
+
+export const updateLibrary = async (req, res) => {
+    try {
+        const { libraryId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library id."
+            });
+        }
+
+        const {
+            libraryName,
+            tagLine = "",
+            whatsappNumber,
+            city = "",
+            state = "",
+            pinCode = "",
+            totalSeats = 0
+        } = req.body;
+
+        if (!libraryName || !whatsappNumber || !city) {
+            return res.status(400).json({
+                success: false,
+                message: "Please fill all required fields."
+            });
+        }
+
+        const library = await libraryModel.findOne({
+            _id: libraryId,
+            ownerId: req.user._id,
+            isDeleted: false
+        });
+
+        if (!library) {
+            return res.status(404).json({
+                success: false,
+                message: "Library not found."
+            });
+        }
+
+        const nextTotalSeats = Number(totalSeats) || 0;
+        const seatDifference = nextTotalSeats - library.totalSeats;
+
+        library.libraryName = libraryName;
+        library.tagLine = tagLine;
+        library.whatsappNumber = whatsappNumber;
+        library.city = city;
+        library.state = state;
+        library.pinCode = pinCode;
+        library.totalSeats = nextTotalSeats;
+        library.availableSeats = Math.max(0, library.availableSeats + seatDifference);
+
+        await library.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Library updated successfully.",
+            library,
+        });
+
+    } catch (error) {
+        console.error("Update Library Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error."
+        });
+    }
+};
+
+

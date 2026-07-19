@@ -3,6 +3,20 @@ import { studentModel } from "../models/studentModel.mjs";
 import { feeRecordModel } from "../models/feeRecordModel.mjs";
 import { paymentModel } from "../models/payementModel.mjs";
 import { libraryModel } from "../models/libraryModel.mjs";
+import { reservationModel } from "../claude/ReservationModel.mjs";
+import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
+
+function startOfDay(date) {
+    const normalized = new Date(date);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+}
+
+function endOfDay(date) {
+    const normalized = new Date(date);
+    normalized.setHours(23, 59, 59, 999);
+    return normalized;
+}
 
 const addStudent = async (req, res) => {
     const session = await mongoose.startSession();
@@ -12,6 +26,8 @@ const addStudent = async (req, res) => {
 
         const {
             libraryId,
+            slotTemplateId,
+            seatId,
             name,
             phone,
             idProof,
@@ -64,6 +80,42 @@ const addStudent = async (req, res) => {
                 message: "You do not have access to this library",
             });
         }
+
+        // 0b. VALIDATE SLOT + FETCH ITS TIME WINDOW
+
+        if (!slotTemplateId) {
+            return res.status(400).json({
+                success: false,
+                message: "Slot is required",
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(slotTemplateId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid slot ID",
+            });
+        }
+
+        const slotTemplate = await slotTemplateModel
+            .findOne({ _id: slotTemplateId, libraryId })
+            .select("startMinute endMinute name")
+            .lean();
+
+        if (!slotTemplate) {
+            return res.status(404).json({
+                success: false,
+                message: "Slot not found for this library",
+            });
+        }
+
+        if (seatId && !mongoose.Types.ObjectId.isValid(seatId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid seat ID",
+            });
+        }
+
         // 1. VALIDATE REQUIRED FIELDS
 
         if (
@@ -99,8 +151,8 @@ const addStudent = async (req, res) => {
         const numericDiscount = Number(discount);
         const numericPaidAmount = Number(paidAmount);
 
-        const parsedStartDate = new Date(startDate);
-        const parsedExpireDate = new Date(expireDate);
+        const parsedStartDate = startOfDay(startDate);
+        const parsedExpireDate = endOfDay(expireDate);
 
         console.log(startDate);
         console.log(parsedStartDate);
@@ -211,7 +263,7 @@ const addStudent = async (req, res) => {
 
         //i willthink about it to check or no ---- im not sure
         const existingStudent = await studentModel.findOne({
-            library: libraryId,
+            libraryId: libraryId,
             phone: normalizedPhone,
         })
             .select("_id")
@@ -234,7 +286,7 @@ const addStudent = async (req, res) => {
         const [student] = await studentModel.create(
             [
                 {
-                    library: libraryId,
+                    libraryId: libraryId,
 
                     name: normalizedName,
                     phone: normalizedPhone,
@@ -267,7 +319,7 @@ const addStudent = async (req, res) => {
         const [feeRecord] = await feeRecordModel.create(
             [
                 {
-                    library: libraryId,
+                    libraryId: libraryId,
                     student: student._id,
                     plan: planId,
 
@@ -294,7 +346,7 @@ const addStudent = async (req, res) => {
             const [createdPayment] = await paymentModel.create(
                 [
                     {
-                        library: libraryId,
+                        libraryId: libraryId,
                         student: student._id,
                         feeRecord: feeRecord._id,
 
@@ -309,6 +361,33 @@ const addStudent = async (req, res) => {
             payment = createdPayment;
         }
 
+        // 12b. CREATE RESERVATION - links this admission to the seat/slot
+        // the owner picked on the seat-map screen. seatId is null only if
+        // the owner explicitly chose "overbook anyway" when no seat was free.
+
+        const overbooked = !seatId;
+
+        const [reservation] = await reservationModel.create(
+            [
+                {
+                    libraryId,
+                    studentId: student._id,
+                    slotTemplateId,
+                    seatId: seatId || null,
+
+                    startMinute: slotTemplate.startMinute,
+                    endMinute: slotTemplate.endMinute,
+
+                    subscriptionStartDate: parsedStartDate,
+                    subscriptionExpiryDate: parsedExpireDate,
+
+                    status: overbooked ? "overbooked_pending" : "active",
+                    overbooked,
+                },
+            ],
+            { session }
+        );
+
         // 13. COMMIT TRANSACTION
 
         await session.commitTransaction();
@@ -321,6 +400,7 @@ const addStudent = async (req, res) => {
                 student,
                 feeRecord,
                 payment,
+                reservation,
             },
         });
     } catch (error) {
@@ -409,7 +489,7 @@ const getStudents = async (req, res) => {
         // 6. FETCH STUDENTS
         const students = await studentModel
             .find({
-                library: libraryId,
+                libraryId: libraryId,
             })
             .sort({
                 createdAt: -1,
@@ -502,7 +582,7 @@ const getActiveStudents = async (req, res) => {
         // 7. FETCH ONLY ACTIVE STUDENTS
         const students = await studentModel
             .find({
-                library: libraryId,
+                libraryId: libraryId,
 
                 currentExpireDate: {
                     $gte: today,
@@ -627,7 +707,7 @@ const getExpiredStudents = async (req, res) => {
         // 9. FETCH EXPIRED STUDENTS
         const students = await studentModel
             .find({
-                library: libraryId,
+                libraryId: libraryId,
 
                 currentExpireDate: {
                     $gte: rangeStart,
@@ -752,7 +832,7 @@ const getExpiringStudents = async (req, res) => {
         // 9. FETCH EXPIRING STUDENTS
         const students = await studentModel
             .find({
-                library: libraryId,
+                libraryId: libraryId,
 
                 currentExpireDate: {
                     $gte: rangeStart,
@@ -863,7 +943,7 @@ const getStudentSummary = async (req, res) => {
         const [summary] = await studentModel.aggregate([
             {
                 $match: {
-                    library: libraryObjectId,
+                    libraryId: libraryObjectId,
                     currentExpireDate: {
                         $ne: null,
                     },

@@ -1,4 +1,5 @@
-import { getSlotAvailability } from "../services/availabilityService.mjs";
+import { getSlotAvailability } from "./availabilityService.mjs";
+
 
 /**
  * GET /libraries/:libraryId/slots/availability?date=2026-07-21

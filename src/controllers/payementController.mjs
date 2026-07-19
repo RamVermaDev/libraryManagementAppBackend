@@ -39,7 +39,7 @@ const getPayments = async (req, res) => {
     // 3. Fetch payments
     const payments = await paymentModel
       .find({
-        library: library._id,
+        libraryId: library._id,
       })
       .populate({
         path: "student",

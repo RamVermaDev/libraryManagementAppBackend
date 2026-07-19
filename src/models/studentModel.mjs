@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const studentSchema = new mongoose.Schema(
     {
         // OWNERSHIP
-        library: {
+        libraryId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Library",
             required: true,
@@ -127,14 +127,14 @@ const studentSchema = new mongoose.Schema(
 
 // Same phone cannot be added twice in one library
 studentSchema.index(
-    { library: 1, phone: 1 },
+    { libraryId: 1, phone: 1 },
     { unique: true }
 );
 
 
 // Fast query for students expiring soon
 studentSchema.index({
-    library: 1,
+    libraryId: 1,
     currentExpireDate: 1,
 });
 

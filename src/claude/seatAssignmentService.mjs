@@ -1,9 +1,10 @@
-import { reservationModel } from "../models/Reservation.mjs";
-import Seat from "../models/Seat.mjs";
+import { seatModel } from "../models/seatModel.mjs";
+import { reservationModel } from "./ReservationModel.mjs";
+
 
 /**
  * Two reservations conflict for shared-seat purposes only if BOTH are true:
- *   1. Their subscription date ranges overlap
+ * c:\Users\ramve\Downloads\seatAssignmentService_1.mjs  1. Their subscription date ranges overlap
  *   2. Their daily time windows overlap
  * (This function is used to filter within one seat's own small reservation list.)
  */
@@ -54,7 +55,7 @@ async function assignSeat(libraryId, newRes, preferredSeatId = null) {
 
     // Step 3: try the preferred seat first (renewals keep the same seat if still free).
     if (preferredSeatId && !conflictsWithSeat(preferredSeatId)) {
-        const stillActive = await Seat.exists({ _id: preferredSeatId, status: "active" });
+        const stillActive = await seatModel.exists({ _id: preferredSeatId, status: "active" });
         if (stillActive) return preferredSeatId;
     }
 
@@ -62,7 +63,7 @@ async function assignSeat(libraryId, newRes, preferredSeatId = null) {
     // This is the classic interval-partitioning algorithm - greedy first-fit
     // is provably optimal for this problem, so if this loop finds nothing,
     // capacity is genuinely exhausted, not a bug in the search.
-    const allSeats = await Seat
+    const allSeats = await seatModel
         .find({ libraryId, status: "active" })
         .sort({ seatNumber: 1 })
         .select("_id")

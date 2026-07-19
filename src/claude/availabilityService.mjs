@@ -1,6 +1,7 @@
-import { reservationModel } from "../models/Reservation.mjs";
-import { slotTemplateModel } from "../models/SlotTemplate.mjs";
+import { reservationModel } from "./ReservationModel.mjs";
 import { getActiveSeatCount } from "./seatService.mjs";
+import { slotTemplateModel } from "./SlotTemplateModel.mjs";
+
 
 // Bucket size in minutes. Smaller = more precise, bigger array. 5 is a good default.
 const GRANULARITY = 5;
@@ -73,10 +74,14 @@ async function getSlotAvailability(libraryId, date = new Date()) {
     const [activeReservations, slotTemplates, totalSeats] = await Promise.all([
         // Only reservations valid on this exact date are pulled -
         // expired/cancelled/future ones are excluded automatically here.
+        // IMPORTANT: both "active" AND "overbooked_pending" count here -
+        // an overbooked student still represents real demand against
+        // capacity, even though they didn't get a physical seat. This is
+        // what allows availableSeats to correctly go negative.
         reservationModel
             .find({
                 libraryId,
-                status: "active",
+                status: { $in: ["active", "overbooked_pending"] },
                 subscriptionStartDate: { $lte: targetDate },
                 subscriptionExpiryDate: { $gte: targetDate }
             })

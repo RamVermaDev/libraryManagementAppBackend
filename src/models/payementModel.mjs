@@ -4,7 +4,7 @@ const paymentSchema = new mongoose.Schema(
     {
         // RELATIONSHIPS
 
-        library: {
+        libraryId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Library",
             required: true,
@@ -45,7 +45,6 @@ const paymentSchema = new mongoose.Schema(
         paymentDate: {
             type: Date,
             default: Date.now,
-            required: true,
         },
 
         // Optional reference from UPI/bank/card payment
@@ -71,7 +70,7 @@ const paymentSchema = new mongoose.Schema(
 
 // Student payment history
 paymentSchema.index({
-    library: 1,
+    libraryId: 1,
     student: 1,
     paymentDate: -1,
 });
@@ -86,7 +85,7 @@ paymentSchema.index({
 
 // Library income history
 paymentSchema.index({
-    library: 1,
+    libraryId: 1,
     paymentDate: -1,
 });
 

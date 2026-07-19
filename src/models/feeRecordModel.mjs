@@ -4,7 +4,7 @@ const feeRecordSchema = new mongoose.Schema(
     {
         // RELATIONSHIPS
 
-        library: {
+        libraryId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Library",
             required: true,

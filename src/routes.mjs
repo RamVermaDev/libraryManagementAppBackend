@@ -8,7 +8,10 @@ import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
 import { getPayments } from './controllers/payementController.mjs'
 import { addSeats, createSeats, listSeats, updateSeatStatus } from './claude/seatController.mjs'
-import { createSlot, listSlots, updateSlotStatus } from './claude/slotController.mjs'
+import { createSlot, deleteSlot, editSlot, listSlots, updateSlotStatus } from './claude/slotController.mjs'
+import { getAvailability } from './claude/availabilityController.mjs'
+import { cancelReservation, editReservation, renewReservation, createReservation } from './claude/bookingController.mjs'
+import { getSeatMapForSlot } from './claude/seatMapController.mjs'
 
 
 const routes = express.Router()
@@ -67,9 +70,20 @@ routes.patch("/api/seats/:seatId/status", updateSeatStatus); //status
 //API related to SLOTS
 routes.post("/api/:libraryId/slot", createSlot); //create
 routes.get("/api/:libraryId/slots", listSlots); //addMore
-routes.patch("/api/slot/:slotTemplateId/status", updateSlotStatus); //UpdateStatus
+routes.patch("/api/:slotId/status", updateSlotStatus);//UpdateStatus
+routes.patch("/api/:slotId/editslot", editSlot) 
+routes.delete("/api/:slotId/deleteslot", deleteSlot) //DeleteSlot
 
 // The booking-screen endpoint: shows every slot template + live seat availability
-//router.get("/libraries/:libraryId/slots/availability", availabilityController.getAvailability);
+routes.get("/api/:libraryId/slots/availability", getAvailability);
+
+// The seat-picker endpoint: shows every physical seat, booked vs available, for a chosen slot
+routes.get("/api/:libraryId/seat-map", getSeatMapForSlot);
+
+//API related to BOKING
+routes.post("/reservations", createReservation);
+routes.patch("/reservations/:reservationId/cancel", cancelReservation);
+routes.post("/reservations/:reservationId/renew", renewReservation);
+routes.patch("/reservations/:reservationId", editReservation);
 
 export default routes;

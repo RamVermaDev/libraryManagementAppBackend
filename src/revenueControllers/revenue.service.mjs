@@ -20,7 +20,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    library: libraryId,
+                    libraryId: libraryId,
                     paymentDate: {
                         $gte: today.start,
                         $lte: today.end,
@@ -40,7 +40,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    library: libraryId,
+                    libraryId: libraryId,
                     paymentDate: {
                         $gte: month.start,
                         $lte: month.end,
@@ -60,7 +60,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    library: libraryId,
+                    libraryId: libraryId,
                     paymentDate: {
                         $gte: year.start,
                         $lte: year.end,
@@ -80,7 +80,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    library: libraryId,
+                    libraryId: libraryId,
                 },
             },
             {
@@ -146,7 +146,7 @@ const getCurrentMonthSummary = async (
         paymentModel.aggregate([
             {
                 $match: {
-                    library: libraryId,
+                    libraryId: libraryId,
                     paymentDate: {
                         $gte: startDate,
                         $lte: endDate,
@@ -224,7 +224,7 @@ const getRecentPayments = async (libraryId) => {
 
     const payments = await paymentModel
         .find({
-            library: libraryId,
+            libraryId: libraryId,
         })
         .populate({
             path: "student",
@@ -283,7 +283,7 @@ const getThirtyDayTrend = async (libraryId) => {
 
         {
             $match: {
-                library: libraryId,
+                libraryId: libraryId,
                 paymentDate: {
                     $gte: start,
                     $lte: end,
@@ -353,7 +353,7 @@ const getTwelveMonthTrend = async (libraryId) => {
 
         {
             $match: {
-                library: libraryId,
+                libraryId: libraryId,
                 paymentDate: {
                     $gte: startDate,
                     $lte: now,

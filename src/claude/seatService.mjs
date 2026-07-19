@@ -62,7 +62,7 @@ export async function addMoreSeats(libraryId, extraSeats) {
     });
   }
 
-  return Seat.insertMany(newSeatDocs, { ordered: false });
+  return seatModel.insertMany(newSeatDocs, { ordered: false });
 }
 
 /**

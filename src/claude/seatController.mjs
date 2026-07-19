@@ -1,5 +1,5 @@
 
-import { createSeatsForLibrary } from "./seatService.mjs";
+import { createSeatsForLibrary, addMoreSeats, getSeatsForLibrary, setSeatStatus } from "./seatService.mjs";
 
 
 /**
@@ -36,7 +36,7 @@ export async function addSeats(req, res) {
     const { libraryId } = req.params;
     const { extraSeats } = req.body;
 
-    const seats = await seatService.addMoreSeats(libraryId, extraSeats);
+    const seats = await addMoreSeats(libraryId, extraSeats);
 
     res.status(201).json({
       message: `${seats.length} additional seats created`,
@@ -55,7 +55,7 @@ export async function listSeats(req, res) {
     const { libraryId } = req.params;
     const { status } = req.query;
 
-    const seats = await seatService.getSeatsForLibrary(libraryId, status);
+    const seats = await getSeatsForLibrary(libraryId, status);
     res.status(200).json({ count: seats.length, seats });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -71,7 +71,7 @@ export async function updateSeatStatus(req, res) {
     const { seatId } = req.params;
     const { status } = req.body;
 
-    const seat = await seatService.setSeatStatus(seatId, status);
+    const seat = await setSeatStatus(seatId, status);
     if (!seat) return res.status(404).json({ error: "Seat not found" });
 
     res.status(200).json({ message: "Seat status updated", seat });

@@ -1,5 +1,5 @@
 
-import { createSlotForLibrary, getSlotsForLibrary, setSlotActiveStatus } from "./slotService.mjs";
+import { createSlotForLibrary, deleteSlotForLibrary, editSlotForLibrary, getSlotsForLibrary, setSlotActiveStatus } from "./slotService.mjs";
 
 /**
  * POST /libraries/:libraryId/slots
@@ -7,6 +7,7 @@ import { createSlotForLibrary, getSlotsForLibrary, setSlotActiveStatus } from ".
  */
 async function createSlot(req, res) {
     try {
+        console.log('happening')
         const { libraryId } = req.params;
         const slot = await createSlotForLibrary(libraryId, req.body);
 
@@ -36,15 +37,40 @@ async function listSlots(req, res) {
 }
 
 /**
+ * PATCH /slots/:slotTemplateId
+ * Body: { name,startMinute,endMinute,monthlyPrice }
+ */
+async function editSlot(req, res) {
+    try {
+        console.log('edit')
+        const { slotId } = req.params;
+
+        const slot = await editSlotForLibrary(
+            slotId,
+            req.body,
+        );
+
+        res.status(200).json({
+            message: "Slot updated successfully",
+            slot,
+        });
+    } catch (err) {
+        res.status(400).json({
+            error: err.message,
+        });
+    }
+}
+
+/**
  * PATCH /slots/:slotTemplateId/status
  * Body: { isActive: false }
  */
 async function updateSlotStatus(req, res) {
     try {
-        const { slotTemplateId } = req.params;
+        const { slotId } = req.params;
         const { isActive } = req.body;
 
-        const slot = await setSlotActiveStatus(slotTemplateId, isActive);
+        const slot = await setSlotActiveStatus(slotId, isActive);
         if (!slot) return res.status(404).json({ error: "Slot not found" });
 
         res.status(200).json({ message: "Slot status updated", slot });
@@ -53,4 +79,20 @@ async function updateSlotStatus(req, res) {
     }
 }
 
-export { createSlot, listSlots, updateSlotStatus };
+async function deleteSlot(req, res) {
+    try {
+        const { slotId } = req.params;
+
+        await deleteSlotForLibrary(slotId);
+
+        res.status(200).json({
+            message: "Slot deleted successfully",
+        });
+    } catch (err) {
+        res.status(400).json({
+            error: err.message,
+        });
+    }
+}
+
+export { createSlot, listSlots, editSlot, updateSlotStatus, deleteSlot };

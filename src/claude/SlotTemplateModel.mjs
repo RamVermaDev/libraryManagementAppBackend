@@ -55,10 +55,11 @@ const slotTemplateSchema = new mongoose.Schema({
     });
 
 // endMinute must always be after startMinute
-slotTemplateSchema.pre("validate", function () {
+slotTemplateSchema.pre("validate", function (next) {
     if (this.endMinute <= this.startMinute) {
         return next(new Error("endMinute must be greater than startMinute"));
     }
+    next();
 });
 
 slotTemplateSchema.index({ libraryId: 1, isActive: 1 });

@@ -11,6 +11,7 @@ import { getSlotAvailability } from "./availabilityService.mjs";
  *   Evening (12PM-6PM)  -> Available Seats: 0, needs 1 extra
  */
 async function getAvailability(req, res) {
+    console.log('fetch avalable slot')
     try {
         const { libraryId } = req.params;
         const date = req.query.date ? new Date(req.query.date) : new Date();
@@ -21,11 +22,15 @@ async function getAvailability(req, res) {
 
         const availability = await getSlotAvailability(libraryId, date);
 
+        console.log(availability)
+
         res.status(200).json({
             libraryId,
             date: date.toISOString().slice(0, 10),
             slots: availability
         });
+
+        
     } catch (err) {
         res.status(400).json({ error: err.message });
     }

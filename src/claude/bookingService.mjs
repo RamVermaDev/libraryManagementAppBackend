@@ -171,7 +171,7 @@ async function renewReservation(oldReservationId, newSubscriptionStartDate, newS
  * @param {String} reservationId
  * @param {Object} changes  any of: slotTemplateId, subscriptionStartDate, subscriptionExpiryDate
  */
-async function editReservation(reservationId, changes) {
+async function editReservationForLibrary(reservationId, changes) {
     const session = await mongoose.startSession();
 
     try {
@@ -248,4 +248,4 @@ async function editReservation(reservationId, changes) {
     }
 }
 
-export { createReservationForLibrary, cancelReservation, renewReservation, editReservation };
+export { createReservationForLibrary, cancelReservation, renewReservation, editReservationForLibrary };

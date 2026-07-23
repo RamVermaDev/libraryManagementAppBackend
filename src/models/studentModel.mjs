@@ -10,6 +10,18 @@ const studentSchema = new mongoose.Schema(
             index: true,
         },
 
+        slotTemplateId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SlotTemplate",
+            required: true,
+        },
+
+        seatId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Seat",
+            default: null,
+        },
+
         // PERSONAL DETAILS
         name: {
             type: String,
@@ -26,12 +38,11 @@ const studentSchema = new mongoose.Schema(
             match: [/^[6-9]\d{9}$/, "Enter a valid Indian phone number"],
         },
 
-        //REMOVING GENDER FOR NOW
-        // gender: {
-        //     type: String,
-        //     enum: ["Male", "Female", "Other"],
-        //     default: null,
-        // },
+        gender: {
+            type: String,
+            enum: ["Male", "Female", "Other"],
+            default: null,
+        },
 
         idProof: {
             type: String,
@@ -39,11 +50,10 @@ const studentSchema = new mongoose.Schema(
             default: null,
         },
 
-        //will do tit later 
-        // profileImage: {
-        //     type: String,
-        //     default: null,
-        // },
+        photoPublicId: {
+            type: String,
+            default: "",
+        },
 
         // MEMBERSHIP SUMMARY
         joiningDate: {
@@ -53,23 +63,8 @@ const studentSchema = new mongoose.Schema(
         },
 
 
-        //sample Plan
-        currentPlan: {
-            type: String,
-            required: true,
-        },
-
-
-        //will do it later
-        // currentPlan: {
-        //     type: mongoose.Schema.Types.ObjectId,
-        //     ref: "Plan",
-        //     default: null,
-        // },
-
-
         //this will also change but right wo okay!!!!!!
-        currentProgramDays: {
+        currentPlanDays: {
             type: Number,
             min: 1,
             default: null,

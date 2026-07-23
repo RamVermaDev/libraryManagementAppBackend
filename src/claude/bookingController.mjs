@@ -2,7 +2,7 @@ import {
     createReservationForLibrary,
     cancelReservation as cancelReservationForLibrary,
     renewReservation as renewReservationForLibrary,
-    editReservation as editReservationForLibrary
+    editReservationForLibrary
 } from "./bookingService.mjs";
 
 /**

@@ -5,6 +5,8 @@ import { paymentModel } from "../models/payementModel.mjs";
 import { libraryModel } from "../models/libraryModel.mjs";
 import { reservationModel } from "../claude/ReservationModel.mjs";
 import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
+import { validateObjectId } from "../helper/validatorHelper.mjs";
+import { updateStudentProfileService } from "../services/studentService.mjs";
 
 function startOfDay(date) {
     const normalized = new Date(date);
@@ -31,8 +33,7 @@ const addStudent = async (req, res) => {
             name,
             phone,
             idProof,
-            planId,
-            programDays,
+            currentPlanDays,
             startDate,
             expireDate,
             amount,
@@ -55,12 +56,14 @@ const addStudent = async (req, res) => {
             });
         }
 
-        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid library ID",
-            });
-        }
+        // if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: "Invalid library ID",
+        //     });
+        // }
+
+        validateObjectId(libraryId, 'Library Id')
 
         //ALSO IN SESSION WENEED TO ADD LIBRARY TOTAL STUDENT
 
@@ -90,12 +93,7 @@ const addStudent = async (req, res) => {
             });
         }
 
-        if (!mongoose.Types.ObjectId.isValid(slotTemplateId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid slot ID",
-            });
-        }
+        validateObjectId(slotTemplateId, 'Slot ID')
 
         const slotTemplate = await slotTemplateModel
             .findOne({ _id: slotTemplateId, libraryId })
@@ -121,8 +119,7 @@ const addStudent = async (req, res) => {
         if (
             !name ||
             !phone ||
-            !planId ||
-            !programDays ||
+            !currentPlanDays ||
             !startDate ||
             !expireDate ||
             amount === undefined
@@ -146,7 +143,7 @@ const addStudent = async (req, res) => {
         const normalizedName = name.trim();
         const normalizedPhone = phone.trim();
 
-        const numericProgramDays = Number(programDays);
+        const numericPlanDays = Number(currentPlanDays);
         const numericAmount = Number(amount);
         const numericDiscount = Number(discount);
         const numericPaidAmount = Number(paidAmount);
@@ -161,12 +158,12 @@ const addStudent = async (req, res) => {
 
         // 3. VALIDATE NUMBERS
         if (
-            !Number.isFinite(numericProgramDays) ||
-            numericProgramDays <= 0
+            !Number.isFinite(numericPlanDays) ||
+            numericPlanDays <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Program days must be greater than 0",
+                message: "Plan days must be greater than 0",
             });
         }
 
@@ -231,34 +228,6 @@ const addStudent = async (req, res) => {
             });
         }
 
-
-        // 6. VALIDATE OBJECT IDS
-
-        //this will be done later
-        // if (!mongoose.Types.ObjectId.isValid(planId)) {
-        //     return res.status(400).json({
-        //         success: false,
-        //         message: "Invalid plan ID",
-        //     });
-        // }
-
-
-        // 7. CHECK PLAN
-
-        //this will again done later
-        // const plan = await Plan.findOne({
-        //     _id: planId,
-        //     library: libraryId,
-        // }).lean();
-
-        // if (!plan) {
-        //     return res.status(404).json({
-        //         success: false,
-        //         message: "Plan not found",
-        //     });
-        // }
-
-
         // 8. CHECK DUPLICATE STUDENT
 
         //i willthink about it to check or no ---- im not sure
@@ -287,6 +256,8 @@ const addStudent = async (req, res) => {
             [
                 {
                     libraryId: libraryId,
+                    slotTemplateId: slotTemplateId,
+                    seatId: seatId,
 
                     name: normalizedName,
                     phone: normalizedPhone,
@@ -295,8 +266,7 @@ const addStudent = async (req, res) => {
 
                     joiningDate: parsedStartDate,
 
-                    currentPlan: planId,
-                    currentProgramDays: numericProgramDays,
+                    currentPlanDays: numericPlanDays,
                     currentStartDate: parsedStartDate,
                     currentExpireDate: parsedExpireDate,
 
@@ -320,10 +290,10 @@ const addStudent = async (req, res) => {
             [
                 {
                     libraryId: libraryId,
-                    student: student._id,
-                    plan: planId,
+                    studentId: student._id,
+                    slotId: slotTemplateId,
 
-                    programDays: numericProgramDays,
+                    planDays: numericPlanDays,
 
                     startDate: parsedStartDate,
                     expireDate: parsedExpireDate,
@@ -1159,4 +1129,58 @@ const getStudentSummary = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents }
+const updateStudentProfile = async (req, res) => {
+    try {
+        const student = await updateStudentProfileService({
+            userId: req.user.id,
+            libraryId: req.params.libraryId,
+            studentId: req.params.studentId,
+            name: req.body.name,
+            phone: req.body.phone,
+            idProof: req.body.idProof,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Student updated successfully",
+            data: {
+                student,
+            },
+        });
+    } catch (error) {
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({
+                success: false,
+                message: error.message,
+            });
+        }
+
+        if (error?.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "Student with this phone number already exists",
+            });
+        }
+
+        if (error?.name === "ValidationError") {
+            const messages = Object.values(error.errors).map(
+                (item) => item.message
+            );
+
+            return res.status(400).json({
+                success: false,
+                message: messages[0] || "Validation failed",
+                errors: messages,
+            });
+        }
+
+        console.error("UPDATE STUDENT PROFILE ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to update student",
+        });
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile }

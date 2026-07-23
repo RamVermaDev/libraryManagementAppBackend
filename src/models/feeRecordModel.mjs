@@ -11,26 +11,20 @@ const feeRecordSchema = new mongoose.Schema(
             index: true,
         },
 
-        student: {
+        studentId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Student",
             required: true,
             index: true,
         },
 
-        plan: {
+        slotId: {
             type: String,
             required: true,
         },
-        //this will be done later
-        // plan: {
-        //     type: mongoose.Schema.Types.ObjectId,
-        //     ref: "Plan",
-        //     required: true,
-        // },
 
         // PROGRAM DETAILS
-        programDays: {
+        planDays: {
             type: Number,
             required: true,
             min: 1,

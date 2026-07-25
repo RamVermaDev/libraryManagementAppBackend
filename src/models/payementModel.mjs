@@ -42,6 +42,12 @@ const paymentSchema = new mongoose.Schema(
             ],
         },
 
+        tracker: {
+            type: String,
+            enum: ["credit", "refund"],
+            default: "credit",
+        },
+
         paymentDate: {
             type: Date,
             default: Date.now,
@@ -83,7 +89,13 @@ paymentSchema.index({
 });
 
 
-// Library income history
+// Library income and refund history
+paymentSchema.index({
+    libraryId: 1,
+    tracker: 1,
+    paymentDate: -1,
+});
+
 paymentSchema.index({
     libraryId: 1,
     paymentDate: -1,

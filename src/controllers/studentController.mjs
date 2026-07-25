@@ -1183,4 +1183,272 @@ const updateStudentProfile = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile }
+const clearStudentPending = async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const { action, amount, paymentMode, note } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Library ID or Student ID",
+            });
+        }
+
+        if (!action || !["paid", "discount"].includes(action.toLowerCase())) {
+            return res.status(400).json({
+                success: false,
+                message: "Action must be 'paid' or 'discount'",
+            });
+        }
+
+        const normalizedAction = action.toLowerCase();
+
+        if (normalizedAction === "paid" && (!paymentMode || !["Cash", "Online"].includes(paymentMode))) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid payment mode ('Cash' or 'Online') is required when marking as paid",
+            });
+        }
+
+        const library = await libraryModel
+            .findOne({ _id: libraryId, ownerId: userId })
+            .select("_id");
+
+        if (!library) {
+            return res.status(404).json({
+                success: false,
+                message: "Library not found or access denied",
+            });
+        }
+
+        session.startTransaction();
+
+        const student = await studentModel
+            .findOne({ _id: studentId, libraryId })
+            .session(session);
+
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({
+                success: false,
+                message: "Student not found",
+            });
+        }
+
+        if (student.totalPending <= 0) {
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: "Student has no pending fees to clear",
+            });
+        }
+
+        const clearAmount = Number(amount) > 0 ? Math.min(Number(amount), student.totalPending) : student.totalPending;
+
+        let feeRecord = await feeRecordModel
+            .findOne({ studentId: student._id, libraryId, pendingAmount: { $gt: 0 } })
+            .sort({ createdAt: -1 })
+            .session(session);
+
+        if (!feeRecord) {
+            feeRecord = await feeRecordModel
+                .findOne({ studentId: student._id, libraryId })
+                .sort({ createdAt: -1 })
+                .session(session);
+        }
+
+        let payment = null;
+
+        if (normalizedAction === "paid") {
+            student.totalPaid += clearAmount;
+            student.totalPending = Math.max(0, student.totalPending - clearAmount);
+            student.lastPaymentDate = new Date();
+
+            if (feeRecord) {
+                feeRecord.paidAmount += clearAmount;
+                feeRecord.pendingAmount = Math.max(0, feeRecord.pendingAmount - clearAmount);
+                await feeRecord.save({ session });
+
+                const [createdPayment] = await paymentModel.create(
+                    [
+                        {
+                            libraryId,
+                            student: student._id,
+                            feeRecord: feeRecord._id,
+                            amount: clearAmount,
+                            paymentMode,
+                            tracker: "credit",
+                            note: note ? String(note).trim() : null,
+                            paymentDate: new Date(),
+                        },
+                    ],
+                    { session }
+                );
+                payment = createdPayment;
+            }
+        } else if (normalizedAction === "discount") {
+            student.totalDiscount += clearAmount;
+            student.totalPending = Math.max(0, student.totalPending - clearAmount);
+
+            if (feeRecord) {
+                feeRecord.discount += clearAmount;
+                feeRecord.pendingAmount = Math.max(0, feeRecord.pendingAmount - clearAmount);
+                await feeRecord.save({ session });
+            }
+        }
+
+        await student.save({ session });
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: `Pending amount of ₹${clearAmount} successfully resolved as ${normalizedAction}`,
+            data: {
+                student,
+                payment,
+            },
+        });
+    } catch (error) {
+        await session.abortTransaction();
+        console.error("CLEAR STUDENT PENDING ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to clear student pending amount",
+        });
+    } finally {
+        session.endSession();
+    }
+};
+
+const refundStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const { refundAmount, paymentMode, note } = req.body;
+
+        // --- VALIDATE IDs ---
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: "Invalid Library ID or Student ID" });
+        }
+
+        // --- VALIDATE REFUND AMOUNT ---
+        const numericRefund = Number(refundAmount);
+        if (!Number.isFinite(numericRefund) || numericRefund <= 0) {
+            return res.status(400).json({ success: false, message: "Refund amount must be greater than 0" });
+        }
+
+        // --- VALIDATE PAYMENT MODE ---
+        if (!paymentMode || !["Cash", "Online"].includes(paymentMode)) {
+            return res.status(400).json({ success: false, message: "Valid payment mode (Cash or Online) is required" });
+        }
+
+        // --- CHECK LIBRARY OWNERSHIP ---
+        const library = await libraryModel
+            .findOne({ _id: libraryId, ownerId: userId })
+            .select("_id");
+
+        if (!library) {
+            return res.status(403).json({ success: false, message: "Library not found or access denied" });
+        }
+
+        session.startTransaction();
+
+        // --- FIND STUDENT ---
+        const student = await studentModel
+            .findOne({ _id: studentId, libraryId })
+            .session(session);
+
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: "Student not found" });
+        }
+
+        // --- VALIDATE: REFUND CANNOT EXCEED WHAT WAS PAID ---
+        if (numericRefund > student.totalPaid) {
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: `Refund amount cannot exceed total paid (₹${student.totalPaid})`,
+            });
+        }
+
+        // --- 1. CANCEL ACTIVE RESERVATION (frees seat + slot) ---
+        const reservation = await reservationModel.findOneAndUpdate(
+            {
+                studentId: student._id,
+                libraryId,
+                status: { $in: ["active", "overbooked_pending"] },
+            },
+            { status: "cancelled", cancelledAt: new Date() },
+            { new: true, session }
+        );
+
+        // --- 2. UPDATE FEE RECORD ---
+        const feeRecord = await feeRecordModel
+            .findOne({ studentId: student._id, libraryId, paidAmount: { $gt: 0 } })
+            .sort({ createdAt: -1 })
+            .session(session);
+
+        if (feeRecord) {
+            feeRecord.paidAmount = Math.max(0, feeRecord.paidAmount - numericRefund);
+            feeRecord.pendingAmount = 0; // reservation cancelled — nothing left to collect
+            await feeRecord.save({ session });
+        }
+
+        // --- 3. CREATE REFUND PAYMENT RECORD ---
+        const [refundPayment] = await paymentModel.create(
+            [
+                {
+                    libraryId,
+                    student: student._id,
+                    feeRecord: feeRecord?._id || null,
+                    amount: numericRefund,
+                    paymentMode,
+                    tracker: "refund",
+                    note: note ? String(note).trim() : null,
+                    paymentDate: new Date(),
+                },
+            ],
+            { session }
+        );
+
+        // --- 4. UPDATE STUDENT FINANCIALS ---
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        const yesterday = new Date(Date.now() - oneDayMs);
+
+        student.totalPaid = Math.max(0, student.totalPaid - numericRefund);
+        student.totalPending = 0;    // waived — reservation cancelled
+        student.seatId = null;        // seat released
+        student.currentExpireDate = yesterday; // mark as expired immediately
+        await student.save({ session });
+
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: `Refund of ₹${numericRefund} processed successfully`,
+            data: {
+                student,
+                refundPayment,
+                reservation,
+            },
+        });
+    } catch (error) {
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        console.error("REFUND STUDENT ERROR:", error);
+        return res.status(500).json({ success: false, message: "Unable to process refund" });
+    } finally {
+        session.endSession();
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile, clearStudentPending, refundStudent }
+

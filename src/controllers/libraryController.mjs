@@ -1,15 +1,12 @@
 import mongoose from "mongoose";
 import { libraryModel } from "../models/libraryModel.mjs";
 import { userModel } from "../models/userModel.mjs";
+import { seatModel } from "../models/seatModel.mjs";
 
 export const createLibrary = async (req, res) => {
-    console.log('happen')
-
     const session = await mongoose.startSession();
 
     try {
-        console.log('happen')
-
         session.startTransaction();
 
         const ownerId = req.user._id;
@@ -23,6 +20,8 @@ export const createLibrary = async (req, res) => {
             pinCode = '',
             totalSeats = 0
         } = req.body;
+
+        const seatsCount = Number(totalSeats) > 0 ? Number(totalSeats) : 0;
 
         // Validate required fields
         if (
@@ -61,11 +60,25 @@ export const createLibrary = async (req, res) => {
             city,
             state,
             pinCode,
-            totalSeats,
-            availableSeats: totalSeats,
+            totalSeats: seatsCount,
         });
 
         await library.save({ session });
+
+        // Auto-generate seat documents inside transaction if totalSeats > 0
+        if (seatsCount > 0) {
+            const seatDocs = [];
+            const prefix = req.body.prefix || req.body.seatPrefix || 'A';
+            for (let seatNumber = 1; seatNumber <= seatsCount; seatNumber++) {
+                seatDocs.push({
+                    libraryId: library._id,
+                    seatNumber,
+                    label: `${prefix}-${seatNumber}`,
+                    status: "active",
+                });
+            }
+            await seatModel.insertMany(seatDocs, { session });
+        }
 
         // Save library id into user's libraries array
         owner.libraries.push(library._id);
@@ -82,7 +95,6 @@ export const createLibrary = async (req, res) => {
         });
 
     } catch (error) {
-
         await session.abortTransaction();
         session.endSession();
 
@@ -162,7 +174,6 @@ export const updateLibrary = async (req, res) => {
         }
 
         const nextTotalSeats = Number(totalSeats) || 0;
-        const seatDifference = nextTotalSeats - library.totalSeats;
 
         library.libraryName = libraryName;
         library.tagLine = tagLine;
@@ -171,7 +182,6 @@ export const updateLibrary = async (req, res) => {
         library.state = state;
         library.pinCode = pinCode;
         library.totalSeats = nextTotalSeats;
-        library.availableSeats = Math.max(0, library.availableSeats + seatDifference);
 
         await library.save();
 
@@ -190,5 +200,3 @@ export const updateLibrary = async (req, res) => {
         });
     }
 };
-
-

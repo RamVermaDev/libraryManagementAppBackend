@@ -81,11 +81,6 @@ const librarySchema = new mongoose.Schema({
         default: 0
     },
 
-    availableSeats: {
-        type: Number,
-        default: 0
-    },
-
     // Subscription
 
     subscription: {
@@ -113,6 +108,19 @@ const librarySchema = new mongoose.Schema({
 
         endAt: Date
 
+    },
+
+    // Seat Layout Config
+
+    seatLayout: {
+        rows: {
+            type: Number,
+            default: 5
+        },
+        columns: {
+            type: Number,
+            default: 10
+        }
     },
 
     // Settings

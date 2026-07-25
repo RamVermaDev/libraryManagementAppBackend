@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { expenseModel } from "../models/expenseModel.mjs";
 import { paymentModel } from "../models/payementModel.mjs";
 import { getTodayRange, getCurrentMonthRange, getCurrentYearRange, getLast30Days, getLast12Months } from "./revenue.helper.mjs";
@@ -5,10 +6,14 @@ import { getTodayRange, getCurrentMonthRange, getCurrentYearRange, getLast30Days
 const getSummary = async (libraryId) => {
 
     const today = getTodayRange();
-
     const month = getCurrentMonthRange();
-
     const year = getCurrentYearRange();
+    const objectId = new mongoose.Types.ObjectId(libraryId);
+
+    const creditFilter = {
+        $or: [{ libraryId: objectId }, { library: objectId }],
+        tracker: { $ne: "refund" }
+    };
 
     const [
         todayIncome,
@@ -20,7 +25,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    libraryId: libraryId,
+                    ...creditFilter,
                     paymentDate: {
                         $gte: today.start,
                         $lte: today.end,
@@ -40,7 +45,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    libraryId: libraryId,
+                    ...creditFilter,
                     paymentDate: {
                         $gte: month.start,
                         $lte: month.end,
@@ -60,7 +65,7 @@ const getSummary = async (libraryId) => {
         paymentModel.aggregate([
             {
                 $match: {
-                    libraryId: libraryId,
+                    ...creditFilter,
                     paymentDate: {
                         $gte: year.start,
                         $lte: year.end,
@@ -79,9 +84,7 @@ const getSummary = async (libraryId) => {
 
         paymentModel.aggregate([
             {
-                $match: {
-                    libraryId: libraryId,
-                },
+                $match: creditFilter,
             },
             {
                 $group: {
@@ -126,7 +129,6 @@ const getCurrentMonthSummary = async (
 ) => {
 
     const startDate = new Date(year, month - 1, 1);
-
     const endDate = new Date(
         year,
         month,
@@ -137,21 +139,38 @@ const getCurrentMonthSummary = async (
         999,
     );
 
+    const objectId = new mongoose.Types.ObjectId(libraryId);
+
+    const creditFilter = {
+        $or: [{ libraryId: objectId }, { library: objectId }],
+        tracker: { $ne: "refund" },
+        paymentDate: {
+            $gte: startDate,
+            $lte: endDate,
+        },
+    };
+
+    const refundFilter = {
+        $or: [{ libraryId: objectId }, { library: objectId }],
+        tracker: "refund",
+        paymentDate: {
+            $gte: startDate,
+            $lte: endDate,
+        },
+    };
+
     const [
         income,
+        refundExpense,
         expense,
         expenses,
+        refunds,
     ] = await Promise.all([
 
+        // 1. Gross Income (Credits / Non-refunds)
         paymentModel.aggregate([
             {
-                $match: {
-                    libraryId: libraryId,
-                    paymentDate: {
-                        $gte: startDate,
-                        $lte: endDate,
-                    },
-                },
+                $match: creditFilter,
             },
             {
                 $group: {
@@ -163,10 +182,26 @@ const getCurrentMonthSummary = async (
             },
         ]),
 
+        // 2. Refunds sum in the selected month
+        paymentModel.aggregate([
+            {
+                $match: refundFilter,
+            },
+            {
+                $group: {
+                    _id: null,
+                    total: {
+                        $sum: "$amount",
+                    },
+                },
+            },
+        ]),
+
+        // 3. Manual Expenses in the selected month
         expenseModel.aggregate([
             {
                 $match: {
-                    libraryId,
+                    libraryId: objectId,
                     expenseDate: {
                         $gte: startDate,
                         $lte: endDate,
@@ -183,6 +218,7 @@ const getCurrentMonthSummary = async (
             },
         ]),
 
+        // 4. List of manual expenses
         expenseModel
             .find({
                 libraryId,
@@ -195,6 +231,19 @@ const getCurrentMonthSummary = async (
                 expenseDate: -1,
                 createdAt: -1,
             }),
+
+        // 5. List of refunds in the selected month
+        paymentModel
+            .find(refundFilter)
+            .populate({
+                path: "student",
+                select: "name memberId profileImage",
+            })
+            .sort({
+                paymentDate: -1,
+                createdAt: -1,
+            })
+            .lean(),
     ]);
 
     const monthlyIncome =
@@ -202,29 +251,40 @@ const getCurrentMonthSummary = async (
             ? income[0].total
             : 0;
 
-    const monthlyExpense =
+    const monthlyRefunds =
+        refundExpense.length
+            ? refundExpense[0].total
+            : 0;
+
+    const monthlyManualExpense =
         expense.length
             ? expense[0].total
             : 0;
+
+    // Total monthly expense combines manual expenses + student refunds
+    const totalMonthlyExpense = monthlyManualExpense + monthlyRefunds;
 
     return {
 
         income: monthlyIncome,
 
-        expense: monthlyExpense,
+        expense: totalMonthlyExpense,
 
         profit:
-            monthlyIncome - monthlyExpense,
+            monthlyIncome - totalMonthlyExpense,
 
         expenses,
+
+        refunds,
     };
 };
 
 const getRecentPayments = async (libraryId) => {
+    const objectId = new mongoose.Types.ObjectId(libraryId);
 
     const payments = await paymentModel
         .find({
-            libraryId: libraryId,
+            $or: [{ libraryId: objectId }, { library: objectId }],
         })
         .populate({
             path: "student",
@@ -278,12 +338,14 @@ const getRecentExpenses = async (
 const getThirtyDayTrend = async (libraryId) => {
 
     const { start, end } = getLast30Days();
+    const objectId = new mongoose.Types.ObjectId(libraryId);
 
     const trend = await paymentModel.aggregate([
 
         {
             $match: {
-                libraryId: libraryId,
+                $or: [{ libraryId: objectId }, { library: objectId }],
+                tracker: { $ne: "refund" },
                 paymentDate: {
                     $gte: start,
                     $lte: end,
@@ -342,6 +404,7 @@ const getThirtyDayTrend = async (libraryId) => {
 const getTwelveMonthTrend = async (libraryId) => {
 
     const now = new Date();
+    const objectId = new mongoose.Types.ObjectId(libraryId);
 
     const startDate = new Date(
         now.getFullYear(),
@@ -353,7 +416,8 @@ const getTwelveMonthTrend = async (libraryId) => {
 
         {
             $match: {
-                libraryId: libraryId,
+                $or: [{ libraryId: objectId }, { library: objectId }],
+                tracker: { $ne: "refund" },
                 paymentDate: {
                     $gte: startDate,
                     $lte: now,
@@ -411,3 +475,4 @@ const getTwelveMonthTrend = async (libraryId) => {
 
 
 export { getSummary, getCurrentMonthSummary, getRecentPayments, getRecentExpenses, getThirtyDayTrend, getTwelveMonthTrend };
+

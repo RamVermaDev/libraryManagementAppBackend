@@ -1,5 +1,5 @@
 
-import { createSeatsForLibrary, addMoreSeats, getSeatsForLibrary, setSeatStatus } from "./seatService.mjs";
+import { createSeatsForLibrary, addMoreSeats, getSeatsForLibrary, setSeatStatus, getSeatConfiguration, updateSeatConfiguration } from "./seatService.mjs";
 
 
 /**
@@ -13,8 +13,6 @@ export async function createSeats(req, res) {
   try {
     const { libraryId } = req.params;
     const { totalSeats } = req.body;
-
-    
 
     const seats = await createSeatsForLibrary(libraryId, totalSeats);
 
@@ -77,5 +75,55 @@ export async function updateSeatStatus(req, res) {
     res.status(200).json({ message: "Seat status updated", seat });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+}
+
+/**
+ * GET /api/:libraryId/seats/config
+ */
+export async function getSeatConfig(req, res) {
+  try {
+    const { libraryId } = req.params;
+    const config = await getSeatConfiguration(libraryId);
+    return res.status(200).json({
+      success: true,
+      message: "Seat configuration retrieved successfully",
+      data: config,
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+}
+
+/**
+ * PATCH /api/:libraryId/seats/config
+ * Body: { totalSeats, rows, columns, prefix }
+ */
+export async function updateSeatConfig(req, res) {
+  try {
+    const { libraryId } = req.params;
+    const { totalSeats, rows, columns } = req.body;
+
+    const config = await updateSeatConfiguration(libraryId, {
+      totalSeats,
+      rows,
+      columns,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Seat configuration updated successfully",
+      data: config,
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({
+      success: false,
+      conflict: err.conflict || false,
+      message: err.message,
+      affectedBookings: err.affectedBookings || [],
+    });
   }
 }

@@ -8,17 +8,50 @@ import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
 import { validateObjectId } from "../helper/validatorHelper.mjs";
 import { updateStudentProfileService } from "../services/studentService.mjs";
 
-function startOfDay(date) {
-    const normalized = new Date(date);
-    normalized.setHours(0, 0, 0, 0);
-    return normalized;
+import cloudinary from "../../config/cloudinary.mjs";
+
+function startOfDay(dateInput) {
+    if (!dateInput) return new Date();
+    const d = new Date(dateInput);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
 }
 
-function endOfDay(date) {
-    const normalized = new Date(date);
-    normalized.setHours(23, 59, 59, 999);
-    return normalized;
+function endOfDay(dateInput) {
+    if (!dateInput) return new Date();
+    const d = new Date(dateInput);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
 }
+
+
+function getSignedPhotoUrl(photoPublicId) {
+    if (!photoPublicId) return null;
+    try {
+        return cloudinary.url(photoPublicId, {
+            type: "authenticated",
+            sign_url: true,
+            secure: true,
+            expires_at: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
+        });
+    } catch (e) {
+        return null;
+    }
+}
+
+function attachSignedPhotoUrl(student) {
+    if (!student) return student;
+    const doc = student.toObject ? student.toObject() : { ...student };
+    const profileImage = getSignedPhotoUrl(doc.photoPublicId);
+    return {
+        ...doc,
+        profileImage,
+    };
+}
+
+function attachSignedPhotoUrls(students) {
+    if (!Array.isArray(students)) return students;
+    return students.map(attachSignedPhotoUrl);
+}
+
 
 const addStudent = async (req, res) => {
     const session = await mongoose.startSession();
@@ -33,6 +66,7 @@ const addStudent = async (req, res) => {
             name,
             phone,
             idProof,
+            photoPublicId,
             currentPlanDays,
             startDate,
             expireDate,
@@ -263,6 +297,7 @@ const addStudent = async (req, res) => {
                     phone: normalizedPhone,
 
                     idProof: idProof?.trim() || null,
+                    photoPublicId: photoPublicId?.trim() || "",
 
                     joiningDate: parsedStartDate,
 
@@ -367,7 +402,7 @@ const addStudent = async (req, res) => {
             message: "Student added successfully",
 
             data: {
-                student,
+                student: attachSignedPhotoUrl(student),
                 feeRecord,
                 payment,
                 reservation,
@@ -483,7 +518,7 @@ const getStudents = async (req, res) => {
             success: true,
             message: "Students fetched successfully",
             data: {
-                students,
+                students: attachSignedPhotoUrls(students),
                 pagination: {
                     page,
                     limit,
@@ -579,7 +614,7 @@ const getActiveStudents = async (req, res) => {
             success: true,
             message: "Active students fetched successfully",
             data: {
-                students,
+                students: attachSignedPhotoUrls(students),
                 pagination: {
                     page,
                     limit,
@@ -704,7 +739,7 @@ const getExpiredStudents = async (req, res) => {
             success: true,
             message: "Expired students fetched successfully",
             data: {
-                students,
+                students: attachSignedPhotoUrls(students),
                 pagination: {
                     page,
                     limit,
@@ -830,7 +865,7 @@ const getExpiringStudents = async (req, res) => {
             success: true,
             message: "Expiring students fetched successfully",
             data: {
-                students,
+                students: attachSignedPhotoUrls(students),
                 pagination: {
                     page,
                     limit,
@@ -1450,5 +1485,252 @@ const refundStudent = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile, clearStudentPending, refundStudent }
+const renewStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+
+        const {
+            slotTemplateId,
+            seatId,
+            currentPlanDays,
+            startDate,
+            expireDate,
+            amount,
+            discount = 0,
+            paidAmount = 0,
+            paymentMode,
+            notes,
+        } = req.body;
+
+        // --- VALIDATE IDs ---
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        // --- VALIDATE REQUIRED FIELDS ---
+        if (!slotTemplateId || !currentPlanDays || !startDate || !expireDate || amount === undefined) {
+            return res.status(400).json({ success: false, message: 'Required fields are missing' });
+        }
+
+        // --- PAYMENT MODE REQUIRED IF MONEY PAID ---
+        if (Number(paidAmount) > 0 && !paymentMode) {
+            return res.status(400).json({ success: false, message: 'Payment mode is required when payment is made' });
+        }
+
+        // --- NORMALIZE NUMBERS ---
+        const numericPlanDays = Number(currentPlanDays);
+        const numericAmount = Number(amount);
+        const numericDiscount = Number(discount);
+        const numericPaidAmount = Number(paidAmount);
+
+        if (!Number.isFinite(numericPlanDays) || numericPlanDays <= 0) {
+            return res.status(400).json({ success: false, message: 'Plan days must be greater than 0' });
+        }
+        if (!Number.isFinite(numericAmount) || !Number.isFinite(numericDiscount) || !Number.isFinite(numericPaidAmount)) {
+            return res.status(400).json({ success: false, message: 'Invalid amount value' });
+        }
+        if (numericAmount < 0 || numericDiscount < 0 || numericPaidAmount < 0) {
+            return res.status(400).json({ success: false, message: 'Amount values cannot be negative' });
+        }
+
+        // --- CALCULATE FEE ---
+        const finalAmount = numericAmount - numericDiscount;
+        if (finalAmount < 0) {
+            return res.status(400).json({ success: false, message: 'Discount cannot exceed fee amount' });
+        }
+        if (numericPaidAmount > finalAmount) {
+            return res.status(400).json({ success: false, message: 'Paid amount cannot exceed final amount' });
+        }
+        const pendingAmount = finalAmount - numericPaidAmount;
+
+        // --- PARSE + VALIDATE DATES ---
+        const parsedStartDate = startOfDay(startDate);
+        const parsedExpireDate = endOfDay(expireDate);
+
+        if (Number.isNaN(parsedStartDate.getTime()) || Number.isNaN(parsedExpireDate.getTime())) {
+            return res.status(400).json({ success: false, message: 'Invalid start or expire date' });
+        }
+        if (parsedExpireDate <= parsedStartDate) {
+            return res.status(400).json({ success: false, message: 'Expire date must be after start date' });
+        }
+
+        // --- VALIDATE SLOT BELONGS TO LIBRARY ---
+        validateObjectId(slotTemplateId, 'Slot ID');
+        const slotTemplate = await slotTemplateModel
+            .findOne({ _id: slotTemplateId, libraryId })
+            .select('startMinute endMinute name')
+            .lean();
+
+        if (!slotTemplate) {
+            return res.status(404).json({ success: false, message: 'Slot not found for this library' });
+        }
+
+        // --- CHECK LIBRARY OWNERSHIP ---
+        const library = await libraryModel
+            .findOne({ _id: libraryId, ownerId: userId })
+            .select('_id')
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'You do not have access to this library' });
+        }
+
+        // --- FIND STUDENT ---
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).lean();
+        if (!student) {
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        // --- FIND CURRENT ACTIVE RESERVATION ---
+        const activeReservation = await reservationModel.findOne({
+            studentId: student._id,
+            libraryId,
+            status: { $in: ['active', 'overbooked_pending'] },
+        }).lean();
+
+        session.startTransaction();
+
+        // --- 1. CREATE NEW RESERVATION (renew links to old one via renewalOf) ---
+        const overbooked = !seatId;
+        let newReservation;
+
+        if (activeReservation) {
+            // Use bookingService renewReservation to keep audit trail
+            const { renewReservation } = await import('../claude/bookingService.mjs');
+            const { reservation, overbookingWarning } = await renewReservation(
+                activeReservation._id.toString(),
+                parsedStartDate,
+                parsedExpireDate
+            );
+            newReservation = reservation;
+        } else {
+            // No prior reservation (edge-case) — create fresh
+            const [created] = await reservationModel.create(
+                [
+                    {
+                        libraryId,
+                        studentId: student._id,
+                        slotTemplateId,
+                        seatId: seatId || null,
+                        startMinute: slotTemplate.startMinute,
+                        endMinute: slotTemplate.endMinute,
+                        subscriptionStartDate: parsedStartDate,
+                        subscriptionExpiryDate: parsedExpireDate,
+                        status: overbooked ? 'overbooked_pending' : 'active',
+                        overbooked,
+                    },
+                ],
+                { session }
+            );
+            newReservation = created;
+        }
+
+        // --- 2. UPDATE RESERVATION seatId + slotTemplateId if user changed them ---
+        // (renewReservation preserves the old values; patch them with the new ones)
+        await reservationModel.findByIdAndUpdate(
+            newReservation._id,
+            {
+                seatId: seatId || null,
+                slotTemplateId,
+                startMinute: slotTemplate.startMinute,
+                endMinute: slotTemplate.endMinute,
+                status: overbooked ? 'overbooked_pending' : 'active',
+                overbooked,
+            },
+            { session }
+        );
+
+        // --- 3. CREATE NEW FEE RECORD ---
+        const [feeRecord] = await feeRecordModel.create(
+            [
+                {
+                    libraryId,
+                    studentId: student._id,
+                    slotId: slotTemplateId,
+                    planDays: numericPlanDays,
+                    startDate: parsedStartDate,
+                    expireDate: parsedExpireDate,
+                    amount: numericAmount,
+                    discount: numericDiscount,
+                    finalAmount,
+                    paidAmount: numericPaidAmount,
+                    pendingAmount,
+                },
+            ],
+            { session }
+        );
+
+        // --- 4. CREATE PAYMENT IF MONEY WAS PAID ---
+        let payment = null;
+        if (numericPaidAmount > 0) {
+            const [createdPayment] = await paymentModel.create(
+                [
+                    {
+                        libraryId,
+                        student: student._id,
+                        feeRecord: feeRecord._id,
+                        amount: numericPaidAmount,
+                        paymentMode,
+                        paymentDate: new Date(),
+                        tracker: 'credit',
+                        note: notes?.trim() || null,
+                    },
+                ],
+                { session }
+            );
+            payment = createdPayment;
+        }
+
+        // --- 5. UPDATE STUDENT DOCUMENT ---
+        const updatedStudent = await studentModel.findByIdAndUpdate(
+            student._id,
+            {
+                slotTemplateId,
+                seatId: seatId || null,
+                currentPlanDays: numericPlanDays,
+                currentStartDate: parsedStartDate,
+                currentExpireDate: parsedExpireDate,
+                $inc: {
+                    totalPaid: numericPaidAmount,
+                    totalDiscount: numericDiscount,
+                },
+                totalPending: pendingAmount,
+                ...(numericPaidAmount > 0 && { lastPaymentDate: new Date() }),
+                ...(notes?.trim() && { notes: notes.trim() }),
+            },
+            { new: true, session }
+        );
+
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Admission renewed successfully',
+            data: {
+                student: attachSignedPhotoUrl(updatedStudent),
+                feeRecord,
+                payment,
+                reservation: newReservation,
+            },
+        });
+    } catch (error) {
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        if (error?.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map((e) => e.message);
+            return res.status(400).json({ success: false, message: messages[0] || 'Validation failed' });
+        }
+        console.error('RENEW STUDENT ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to renew admission' });
+    } finally {
+        session.endSession();
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent }
+
 

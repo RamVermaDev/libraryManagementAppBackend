@@ -51,13 +51,20 @@ function maxOccupancyInRange(occupancy, startMinute, endMinute, granularity = GR
 }
 
 /**
- * Normalize any date/time input down to a clean midnight Date object,
- * so date comparisons in the DB query are always apples-to-apples.
+ * Dynamically computes UTC startOfToday and startOfTomorrow anchored in IST (Asia/Kolkata).
+ * Comparing subscriptionStartDate < startOfTomorrow cleanly includes every
+ * timestamp during today regardless of clock precision or same-day creation.
  */
-function normalizeDate(date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
+function getDayBounds(dateInput) {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    // Always extracts calendar year, month, date in IST (Asia/Kolkata)
+    const istDateStr = d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const [year, month, day] = istDateStr.split("-").map(Number);
+
+    const startOfToday = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    const startOfTomorrow = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0));
+
+    return { startOfToday, startOfTomorrow, istDateStr };
 }
 
 /**
@@ -69,7 +76,7 @@ function normalizeDate(date) {
  * @param {Date} [date]  defaults to today
  */
 async function getSlotAvailability(libraryId, date = new Date()) {
-    const targetDate = normalizeDate(date);
+    const { startOfToday, startOfTomorrow } = getDayBounds(date);
 
     const [activeReservations, slotTemplates, totalSeats] = await Promise.all([
         // Only reservations valid on this exact date are pulled -
@@ -82,8 +89,8 @@ async function getSlotAvailability(libraryId, date = new Date()) {
             .find({
                 libraryId,
                 status: { $in: ["active", "overbooked_pending"] },
-                subscriptionStartDate: { $lte: targetDate },
-                subscriptionExpiryDate: { $gte: targetDate }
+                subscriptionStartDate: { $lt: startOfTomorrow },
+                subscriptionExpiryDate: { $gte: startOfToday }
             })
             .select("startMinute endMinute")
             .lean(),

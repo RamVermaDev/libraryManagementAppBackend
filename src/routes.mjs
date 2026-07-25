@@ -2,7 +2,7 @@ import express from 'express'
 import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -13,7 +13,7 @@ import { getAvailability } from './claude/availabilityController.mjs'
 import { cancelReservation, editReservation, renewReservation, createReservation } from './claude/bookingController.mjs'
 import { getSeatMapForSlot } from './claude/seatMapController.mjs'
 import upload from './middleware/upload.mjs'
-import { uploadImage } from './controllers/uploadController.mjs'
+import { deleteImage, uploadImage } from './controllers/uploadController.mjs'
 
 
 const routes = express.Router()
@@ -41,6 +41,7 @@ routes.post('/api/addstudent', authenticate, addStudent)
 routes.patch('/api/:libraryId/students/:studentId/profile', authenticate, updateStudentProfile)
 routes.patch('/api/:libraryId/students/:studentId/clear-pending', authenticate, clearStudentPending)
 routes.patch('/api/:libraryId/students/:studentId/refund', authenticate, refundStudent)
+routes.patch('/api/:libraryId/students/:studentId/renew', authenticate, renewStudent)
 routes.get('/api/:libraryId/sudentsummary', authenticate, getStudentSummary)
 routes.get('/api/:libraryId/getstudents', authenticate, getStudents)
 routes.get('/api/:libraryId/getactivestudents', authenticate, getActiveStudents)
@@ -93,7 +94,8 @@ routes.patch("/reservations/:reservationId/cancel", cancelReservation);
 routes.post("/reservations/:reservationId/renew", renewReservation);
 routes.patch("/reservations/:reservationId", editReservation);
 
-//API related to IMAGE UPLOAD
+//API related to IMAGE UPLOAD & DELETE
 routes.post("/image", upload.single("image"), uploadImage);
+routes.delete("/image/delete", authenticate, deleteImage);
 
 export default routes;

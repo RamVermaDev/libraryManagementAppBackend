@@ -2,10 +2,16 @@ import { seatModel } from "../models/seatModel.mjs";
 import { reservationModel } from "./ReservationModel.mjs";
 import { slotTemplateModel } from "./SlotTemplateModel.mjs";
 
-function normalizeDate(date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
+function getDayBounds(dateInput) {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    // Always extracts calendar year, month, date in IST (Asia/Kolkata)
+    const istDateStr = d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const [year, month, day] = istDateStr.split("-").map(Number);
+
+    const startOfToday = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    const startOfTomorrow = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0));
+
+    return { startOfToday, startOfTomorrow, istDateStr };
 }
 
 /**
@@ -28,7 +34,7 @@ function normalizeDate(date) {
  * @param {Date} [date]  defaults to today
  */
 async function getSeatMap(libraryId, slotTemplateId, date = new Date()) {
-    const targetDate = normalizeDate(date);
+    const { startOfToday, startOfTomorrow } = getDayBounds(date);
 
     const slotTemplate = await slotTemplateModel.findOne({ _id: slotTemplateId, libraryId }).lean();
     if (!slotTemplate) {
@@ -48,8 +54,8 @@ async function getSeatMap(libraryId, slotTemplateId, date = new Date()) {
                 // capacity count on the availability screen.
                 status: { $in: ["active", "overbooked_pending"] },
                 seatId: { $ne: null },
-                subscriptionStartDate: { $lte: targetDate },
-                subscriptionExpiryDate: { $gte: targetDate },
+                subscriptionStartDate: { $lt: startOfTomorrow },
+                subscriptionExpiryDate: { $gte: startOfToday },
                 // time-window overlap with the requested slot, filtered
                 // directly in the query
                 startMinute: { $lt: endMinute },

@@ -55,6 +55,34 @@ const studentSchema = new mongoose.Schema(
             default: "",
         },
 
+        // STATUS & METADATA
+        status: {
+            type: String,
+            enum: ["active", "paused", "blacklisted"],
+            default: "active",
+            index: true,
+        },
+
+        pauseReason: {
+            type: String,
+            default: null,
+        },
+
+        pausedAt: {
+            type: Date,
+            default: null,
+        },
+
+        blacklistReason: {
+            type: String,
+            default: null,
+        },
+
+        blacklistedAt: {
+            type: Date,
+            default: null,
+        },
+
         // MEMBERSHIP SUMMARY
         joiningDate: {
             type: Date,

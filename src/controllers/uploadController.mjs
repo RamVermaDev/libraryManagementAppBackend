@@ -52,6 +52,41 @@ export const uploadImage = async (req, res) => {
     }
 };
 
+export const deleteImage = async (req, res) => {
+    try {
+        console.log("Deleting image...");
+        const { publicId } = req.body;
+
+    
+
+        if (!publicId) {
+            return res.status(400).json({
+                success: false,
+                message: "Public ID is required."
+            });
+        }
+
+        await cloudinary.uploader.destroy(
+            publicId,
+            {
+                type: "authenticated",
+                resource_type: "image"
+            }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Image deleted successfully."
+        });
+    } catch (error) {
+        console.error("DELETE IMAGE ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete image."
+        });
+    }
+};
+
 
 export const uploadStudentImage = async (req, res) => {
     try {

@@ -2,7 +2,7 @@ import express from 'express'
 import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -42,6 +42,11 @@ routes.patch('/api/:libraryId/students/:studentId/profile', authenticate, update
 routes.patch('/api/:libraryId/students/:studentId/clear-pending', authenticate, clearStudentPending)
 routes.patch('/api/:libraryId/students/:studentId/refund', authenticate, refundStudent)
 routes.patch('/api/:libraryId/students/:studentId/renew', authenticate, renewStudent)
+routes.patch('/api/:libraryId/students/:studentId/pause', authenticate, pauseStudent)
+routes.patch('/api/:libraryId/students/:studentId/resume', authenticate, resumeStudent)
+routes.patch('/api/:libraryId/students/:studentId/blacklist', authenticate, blacklistStudent)
+routes.patch('/api/:libraryId/students/:studentId/unblock', authenticate, unblockStudent)
+routes.delete('/api/:libraryId/students/:studentId', authenticate, deleteStudent)
 routes.get('/api/:libraryId/sudentsummary', authenticate, getStudentSummary)
 routes.get('/api/:libraryId/getstudents', authenticate, getStudents)
 routes.get('/api/:libraryId/getactivestudents', authenticate, getActiveStudents)

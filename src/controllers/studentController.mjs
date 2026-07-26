@@ -52,6 +52,19 @@ function attachSignedPhotoUrls(students) {
     return students.map(attachSignedPhotoUrl);
 }
 
+function formatSlotTiming(startMin, endMin) {
+    if (startMin === undefined || endMin === undefined) return "";
+    const formatTime = (minutes) => {
+        const h = Math.floor(minutes / 60) % 24;
+        const m = minutes % 60;
+        const ampm = h >= 12 ? "PM" : "AM";
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        const mStr = m < 10 ? "0" + m : m;
+        const hStr = h12 < 10 ? "0" + h12 : h12;
+        return `${hStr}:${mStr} ${ampm}`;
+    };
+    return `${formatTime(startMin)} - ${formatTime(endMin)}`;
+}
 
 const addStudent = async (req, res) => {
     const session = await mongoose.startSession();
@@ -291,6 +304,7 @@ const addStudent = async (req, res) => {
                 {
                     libraryId: libraryId,
                     slotTemplateId: slotTemplateId,
+                    slotTiming: formatSlotTiming(slotTemplate.startMinute, slotTemplate.endMinute),
                     seatId: seatId,
 
                     name: normalizedName,
@@ -588,7 +602,7 @@ const getActiveStudents = async (req, res) => {
         const students = await studentModel
             .find({
                 libraryId: libraryId,
-
+                status: "active",
                 currentExpireDate: {
                     $gte: today,
                 },
@@ -838,7 +852,7 @@ const getExpiringStudents = async (req, res) => {
         const students = await studentModel
             .find({
                 libraryId: libraryId,
-
+                status: "active",
                 currentExpireDate: {
                     $gte: rangeStart,
                     $lte: rangeEnd,
@@ -964,9 +978,9 @@ const getStudentSummary = async (req, res) => {
                         $sum: {
                             $cond: [
                                 {
-                                    $gte: [
-                                        "$currentExpireDate",
-                                        today,
+                                    $and: [
+                                        { $eq: ["$status", "active"] },
+                                        { $gte: ["$currentExpireDate", today] },
                                     ],
                                 },
                                 1,
@@ -981,18 +995,9 @@ const getStudentSummary = async (req, res) => {
                             $cond: [
                                 {
                                     $and: [
-                                        {
-                                            $gte: [
-                                                "$currentExpireDate",
-                                                day1,
-                                            ],
-                                        },
-                                        {
-                                            $lt: [
-                                                "$currentExpireDate",
-                                                day4,
-                                            ],
-                                        },
+                                        { $eq: ["$status", "active"] },
+                                        { $gte: ["$currentExpireDate", day1] },
+                                        { $lt: ["$currentExpireDate", day4] },
                                     ],
                                 },
                                 1,
@@ -1007,18 +1012,9 @@ const getStudentSummary = async (req, res) => {
                             $cond: [
                                 {
                                     $and: [
-                                        {
-                                            $gte: [
-                                                "$currentExpireDate",
-                                                day4,
-                                            ],
-                                        },
-                                        {
-                                            $lt: [
-                                                "$currentExpireDate",
-                                                day8,
-                                            ],
-                                        },
+                                        { $eq: ["$status", "active"] },
+                                        { $gte: ["$currentExpireDate", day4] },
+                                        { $lt: ["$currentExpireDate", day8] },
                                     ],
                                 },
                                 1,
@@ -1033,18 +1029,9 @@ const getStudentSummary = async (req, res) => {
                             $cond: [
                                 {
                                     $and: [
-                                        {
-                                            $gte: [
-                                                "$currentExpireDate",
-                                                day8,
-                                            ],
-                                        },
-                                        {
-                                            $lt: [
-                                                "$currentExpireDate",
-                                                day11,
-                                            ],
-                                        },
+                                        { $eq: ["$status", "active"] },
+                                        { $gte: ["$currentExpireDate", day8] },
+                                        { $lt: ["$currentExpireDate", day11] },
                                     ],
                                 },
                                 1,
@@ -1059,18 +1046,9 @@ const getStudentSummary = async (req, res) => {
                             $cond: [
                                 {
                                     $and: [
-                                        {
-                                            $gte: [
-                                                "$currentExpireDate",
-                                                dayMinus3,
-                                            ],
-                                        },
-                                        {
-                                            $lt: [
-                                                "$currentExpireDate",
-                                                today,
-                                            ],
-                                        },
+                                        { $ne: ["$status", "blacklisted"] },
+                                        { $gte: ["$currentExpireDate", dayMinus3] },
+                                        { $lt: ["$currentExpireDate", today] },
                                     ],
                                 },
                                 1,
@@ -1085,18 +1063,9 @@ const getStudentSummary = async (req, res) => {
                             $cond: [
                                 {
                                     $and: [
-                                        {
-                                            $gte: [
-                                                "$currentExpireDate",
-                                                dayMinus7,
-                                            ],
-                                        },
-                                        {
-                                            $lt: [
-                                                "$currentExpireDate",
-                                                dayMinus3,
-                                            ],
-                                        },
+                                        { $ne: ["$status", "blacklisted"] },
+                                        { $gte: ["$currentExpireDate", dayMinus7] },
+                                        { $lt: ["$currentExpireDate", dayMinus3] },
                                     ],
                                 },
                                 1,
@@ -1111,18 +1080,9 @@ const getStudentSummary = async (req, res) => {
                             $cond: [
                                 {
                                     $and: [
-                                        {
-                                            $gte: [
-                                                "$currentExpireDate",
-                                                dayMinus10,
-                                            ],
-                                        },
-                                        {
-                                            $lt: [
-                                                "$currentExpireDate",
-                                                dayMinus7,
-                                            ],
-                                        },
+                                        { $ne: ["$status", "blacklisted"] },
+                                        { $gte: ["$currentExpireDate", dayMinus10] },
+                                        { $lt: ["$currentExpireDate", dayMinus7] },
                                     ],
                                 },
                                 1,
@@ -1421,7 +1381,7 @@ const refundStudent = async (req, res) => {
                 status: { $in: ["active", "overbooked_pending"] },
             },
             { status: "cancelled", cancelledAt: new Date() },
-            { new: true, session }
+            { returnDocument: 'after', session }
         );
 
         // --- 2. UPDATE FEE RECORD ---
@@ -1584,6 +1544,13 @@ const renewStudent = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Student not found' });
         }
 
+        if (student.status === 'blacklisted') {
+            return res.status(400).json({
+                success: false,
+                message: 'Blacklisted students cannot renew admission. Please unblock the student first.',
+            });
+        }
+
         // --- FIND CURRENT ACTIVE RESERVATION ---
         const activeReservation = await reservationModel.findOne({
             studentId: student._id,
@@ -1689,6 +1656,7 @@ const renewStudent = async (req, res) => {
             student._id,
             {
                 slotTemplateId,
+                slotTiming: formatSlotTiming(slotTemplate.startMinute, slotTemplate.endMinute),
                 seatId: seatId || null,
                 currentPlanDays: numericPlanDays,
                 currentStartDate: parsedStartDate,
@@ -1731,6 +1699,333 @@ const renewStudent = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent }
+const pauseStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const { reason } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id');
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'Library not found or access denied' });
+        }
+
+        session.startTransaction();
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).session(session);
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        if (student.status === 'paused') {
+            await session.abortTransaction();
+            return res.status(400).json({ success: false, message: 'Student is already paused' });
+        }
+
+        // Pause active reservation
+        await reservationModel.updateMany(
+            { studentId: student._id, libraryId, status: { $in: ['active', 'overbooked_pending'] } },
+            { status: 'paused', seatId: null },
+            { session }
+        );
+
+        student.status = 'paused';
+        student.pausedAt = new Date();
+        student.pauseReason = reason ? String(reason).trim() : null;
+        student.seatId = null; // release seat on pause
+
+        await student.save({ session });
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Student membership paused successfully',
+            data: { student: attachSignedPhotoUrl(student) },
+        });
+    } catch (error) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('PAUSE STUDENT ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to pause student' });
+    } finally {
+        session.endSession();
+    }
+};
+
+const resumeStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const { extensionDays, seatId } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        const numericExtensionDays = Number(extensionDays);
+        if (!Number.isFinite(numericExtensionDays) || numericExtensionDays < 0) {
+            return res.status(400).json({ success: false, message: 'Extension days must be 0 or greater' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id');
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'Library not found or access denied' });
+        }
+
+        session.startTransaction();
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).session(session);
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        if (student.status !== 'paused') {
+            await session.abortTransaction();
+            return res.status(400).json({ success: false, message: 'Student is not currently paused' });
+        }
+
+        // Calculate new expiry date by adding extensionDays
+        const msToAdd = numericExtensionDays * 24 * 60 * 60 * 1000;
+        const currentExpire = student.currentExpireDate ? new Date(student.currentExpireDate) : new Date();
+        const newExpireDate = new Date(currentExpire.getTime() + msToAdd);
+
+        const overbooked = !seatId;
+
+        // Find existing paused reservation or create active reservation
+        let reservation = await reservationModel.findOne({ studentId: student._id, libraryId, status: 'paused' }).session(session);
+
+        if (reservation) {
+            reservation.status = overbooked ? 'overbooked_pending' : 'active';
+            reservation.seatId = seatId || null;
+            reservation.subscriptionExpiryDate = newExpireDate;
+            reservation.overbooked = overbooked;
+            await reservation.save({ session });
+        } else {
+            const slotTemplate = await slotTemplateModel.findById(student.slotTemplateId).lean();
+            const [createdRes] = await reservationModel.create(
+                [
+                    {
+                        libraryId,
+                        studentId: student._id,
+                        slotTemplateId: student.slotTemplateId,
+                        seatId: seatId || null,
+                        startMinute: slotTemplate ? slotTemplate.startMinute : 0,
+                        endMinute: slotTemplate ? slotTemplate.endMinute : 1440,
+                        subscriptionStartDate: new Date(),
+                        subscriptionExpiryDate: newExpireDate,
+                        status: overbooked ? 'overbooked_pending' : 'active',
+                        overbooked,
+                    },
+                ],
+                { session }
+            );
+            reservation = createdRes;
+        }
+
+        student.status = 'active';
+        student.pausedAt = null;
+        student.pauseReason = null;
+        student.currentExpireDate = newExpireDate;
+        student.seatId = seatId || null;
+
+        await student.save({ session });
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Student membership resumed successfully',
+            data: {
+                student: attachSignedPhotoUrl(student),
+                reservation,
+            },
+        });
+    } catch (error) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('RESUME STUDENT ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to resume student' });
+    } finally {
+        session.endSession();
+    }
+};
+
+const blacklistStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const { reason } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id');
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'Library not found or access denied' });
+        }
+
+        session.startTransaction();
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).session(session);
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        if (student.status === 'blacklisted') {
+            await session.abortTransaction();
+            return res.status(400).json({ success: false, message: 'Student is already blacklisted' });
+        }
+
+        // Cancel active reservation
+        await reservationModel.updateMany(
+            { studentId: student._id, libraryId, status: { $in: ['active', 'overbooked_pending', 'paused'] } },
+            { status: 'cancelled', cancelledAt: new Date(), seatId: null },
+            { session }
+        );
+
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        student.status = 'blacklisted';
+        student.blacklistedAt = new Date();
+        student.blacklistReason = reason ? String(reason).trim() : null;
+        student.seatId = null;
+        student.currentExpireDate = yesterday; // immediately expired
+
+        await student.save({ session });
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Student blacklisted successfully',
+            data: { student: attachSignedPhotoUrl(student) },
+        });
+    } catch (error) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('BLACKLIST STUDENT ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to blacklist student' });
+    } finally {
+        session.endSession();
+    }
+};
+
+const unblockStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id');
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'Library not found or access denied' });
+        }
+
+        session.startTransaction();
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).session(session);
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        if (student.status !== 'blacklisted') {
+            await session.abortTransaction();
+            return res.status(400).json({ success: false, message: 'Student is not currently blacklisted' });
+        }
+
+        student.status = 'active';
+        student.blacklistedAt = null;
+        student.blacklistReason = null;
+        student.seatId = null; // seat stays null
+
+        await student.save({ session });
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Student unblocked successfully',
+            data: { student: attachSignedPhotoUrl(student) },
+        });
+    } catch (error) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('UNBLOCK STUDENT ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to unblock student' });
+    } finally {
+        session.endSession();
+    }
+};
+
+const deleteStudent = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id');
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'Library not found or access denied' });
+        }
+
+        session.startTransaction();
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).session(session);
+        if (!student) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        // Cancel active/paused reservations to free seat
+        await reservationModel.updateMany(
+            { studentId: student._id, libraryId, status: { $in: ['active', 'overbooked_pending', 'paused'] } },
+            { status: 'cancelled', cancelledAt: new Date(), seatId: null },
+            { session }
+        );
+
+        // Delete profile photo from Cloudinary if it exists
+        if (student.photoPublicId && student.photoPublicId.trim() !== "") {
+            try {
+                await cloudinary.uploader.destroy(student.photoPublicId, {
+                    type: "authenticated",
+                    invalidate: true,
+                });
+            } catch (imgError) {
+                console.error("Cloudinary Image Delete Error:", imgError);
+            }
+        }
+
+        // Remove student document
+        await studentModel.deleteOne({ _id: student._id, libraryId }).session(session);
+
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Student deleted successfully',
+        });
+    } catch (error) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('DELETE STUDENT ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to delete student' });
+    } finally {
+        session.endSession();
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent }
 
 

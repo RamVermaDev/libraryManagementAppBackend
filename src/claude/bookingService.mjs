@@ -81,7 +81,7 @@ async function cancelReservation(reservationId) {
     const reservation = await reservationModel.findOneAndUpdate(
         { _id: reservationId, status: { $in: ["active", "overbooked_pending"] } },
         { status: "cancelled", cancelledAt: new Date() },
-        { new: true }
+        { returnDocument: 'after' }
     );
 
     if (!reservation) {

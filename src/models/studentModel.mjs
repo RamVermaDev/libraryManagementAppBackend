@@ -16,6 +16,11 @@ const studentSchema = new mongoose.Schema(
             required: true,
         },
 
+        slotTiming: {
+            type: String,
+            default: "",
+        },
+
         seatId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Seat",

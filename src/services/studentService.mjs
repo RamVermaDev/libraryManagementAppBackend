@@ -26,9 +26,14 @@ export async function updateStudentProfileService({
         throw new AppError("Enter a valid Indian phone number", 400);
     }
 
-    const normalizedIdProof = idProof === undefined || idProof === null
-        ? null
-        : String(idProof).trim() || null;
+    const setFields = {
+        name: normalizedName,
+        phone: normalizedPhone,
+    };
+
+    if (idProof !== undefined) {
+        setFields.idProof = idProof === null ? null : (String(idProof).trim() || null);
+    }
 
     const library = await libraryModel
         .findOne({
@@ -75,11 +80,7 @@ export async function updateStudentProfileService({
             libraryId,
         },
         {
-            $set: {
-                name: normalizedName,
-                phone: normalizedPhone,
-                idProof: normalizedIdProof,
-            },
+            $set: setFields,
         },
         {
             new: true,

@@ -897,6 +897,79 @@ const getExpiringStudents = async (req, res) => {
     }
 };
 
+const getPendingStudents = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId } = req.params;
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(
+            Math.max(Number(req.query.limit) || 20, 1),
+            100
+        );
+        const skip = (page - 1) * limit;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        const students = await studentModel
+            .find({
+                libraryId: libraryId,
+                totalPending: { $gt: 0 },
+            })
+            .sort({
+                createdAt: -1,
+                _id: -1,
+            })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        const hasMore = students.length > limit;
+        if (hasMore) {
+            students.pop();
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Pending students fetched successfully",
+            data: {
+                students: attachSignedPhotoUrls(students),
+                pagination: {
+                    page,
+                    limit,
+                    hasMore,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("GET PENDING STUDENTS ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to load pending students",
+        });
+    }
+};
+
 
 const getStudentSummary = async (req, res) => {
     try {
@@ -963,15 +1036,17 @@ const getStudentSummary = async (req, res) => {
             {
                 $match: {
                     libraryId: libraryObjectId,
-                    currentExpireDate: {
-                        $ne: null,
-                    },
                 },
             },
 
             {
                 $group: {
                     _id: null,
+
+                    // TOTAL PENDING DUE AMOUNT ACROSS ALL STUDENTS
+                    totalPendingAmount: {
+                        $sum: { $ifNull: ["$totalPending", 0] },
+                    },
 
                     // ALL ACTIVE STUDENTS
                     active: {
@@ -980,6 +1055,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $eq: ["$status", "active"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", today] },
                                     ],
                                 },
@@ -996,6 +1072,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $eq: ["$status", "active"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", day1] },
                                         { $lt: ["$currentExpireDate", day4] },
                                     ],
@@ -1013,6 +1090,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $eq: ["$status", "active"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", day4] },
                                         { $lt: ["$currentExpireDate", day8] },
                                     ],
@@ -1030,6 +1108,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $eq: ["$status", "active"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", day8] },
                                         { $lt: ["$currentExpireDate", day11] },
                                     ],
@@ -1047,6 +1126,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $ne: ["$status", "blacklisted"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", dayMinus3] },
                                         { $lt: ["$currentExpireDate", today] },
                                     ],
@@ -1064,6 +1144,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $ne: ["$status", "blacklisted"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", dayMinus7] },
                                         { $lt: ["$currentExpireDate", dayMinus3] },
                                     ],
@@ -1081,6 +1162,7 @@ const getStudentSummary = async (req, res) => {
                                 {
                                     $and: [
                                         { $ne: ["$status", "blacklisted"] },
+                                        { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", dayMinus10] },
                                         { $lt: ["$currentExpireDate", dayMinus7] },
                                     ],
@@ -1100,6 +1182,7 @@ const getStudentSummary = async (req, res) => {
             message: "Student summary fetched successfully",
             data: {
                 active: summary?.active ?? 0,
+                totalPendingAmount: summary?.totalPendingAmount ?? 0,
 
                 expiring: {
                     days1To3: summary?.expiring1To3Days ?? 0,
@@ -1139,7 +1222,7 @@ const updateStudentProfile = async (req, res) => {
             success: true,
             message: "Student updated successfully",
             data: {
-                student,
+                student: attachSignedPhotoUrl(student),
             },
         });
     } catch (error) {
@@ -1303,12 +1386,14 @@ const clearStudentPending = async (req, res) => {
             success: true,
             message: `Pending amount of ₹${clearAmount} successfully resolved as ${normalizedAction}`,
             data: {
-                student,
+                student: attachSignedPhotoUrl(student),
                 payment,
             },
         });
     } catch (error) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         console.error("CLEAR STUDENT PENDING ERROR:", error);
         return res.status(500).json({
             success: false,
@@ -1414,6 +1499,7 @@ const refundStudent = async (req, res) => {
         );
 
         // --- 4. UPDATE STUDENT FINANCIALS ---
+
         const oneDayMs = 24 * 60 * 60 * 1000;
         const yesterday = new Date(Date.now() - oneDayMs);
 
@@ -1425,11 +1511,14 @@ const refundStudent = async (req, res) => {
 
         await session.commitTransaction();
 
+        const studentObj = student.toObject();
+        const [signedStudent] = attachSignedPhotoUrls([studentObj]);
+
         return res.status(200).json({
             success: true,
             message: `Refund of ₹${numericRefund} processed successfully`,
             data: {
-                student,
+                student: signedStudent,
                 refundPayment,
                 reservation,
             },
@@ -2026,6 +2115,6 @@ const deleteStudent = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent }
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent }
 
 

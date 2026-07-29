@@ -2,7 +2,7 @@ import express from 'express'
 import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -52,6 +52,7 @@ routes.get('/api/:libraryId/getstudents', authenticate, getStudents)
 routes.get('/api/:libraryId/getactivestudents', authenticate, getActiveStudents)
 routes.get('/api/:libraryId/getexpiredstudents', authenticate, getExpiredStudents)
 routes.get('/api/:libraryId/getexpiringstudents', authenticate, getExpiringStudents)
+routes.get('/api/:libraryId/getpendingstudents', authenticate, getPendingStudents)
 
 //API related to TASK
 routes.post('/api/addtask', authenticate, addTask)

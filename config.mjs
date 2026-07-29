@@ -8,7 +8,7 @@ const BCRYPT_SALT_ROUND = Number(process.env.BCRYPT_SALT_ROUND)
 const JWT_SECRET = process.env.JWT_SECRET
 
 const SMTP_HOST = process.env.SMTP_HOST
-const SMTP_PORT = process.env.SMTP_HOST
+const SMTP_PORT = process.env.SMTP_PORT
 const SMTP_USER = process.env.SMTP_USER
 const SMTP_PASS = process.env.SMTP_PASS
 const SMTP_FROM = process.env.EMAIL_FROM

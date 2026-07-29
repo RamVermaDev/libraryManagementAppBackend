@@ -54,6 +54,9 @@ const transporter = nodemailer.createTransport({
 const sendEmail = async ({ to, subject, text, html }) => {
     try {
         console.log("Sending email via Brevo HTTP API to:", to);
+        const plainText = text || (html ? html.replace(/<[^>]*>?/gm, '') : subject) || "Library Notification";
+        const htmlBody = html || text || subject;
+
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
             method: "POST",
             headers: {
@@ -68,8 +71,8 @@ const sendEmail = async ({ to, subject, text, html }) => {
                 },
                 to: [{ email: to }],
                 subject: subject,
-                textContent: text || "",
-                htmlContent: html || text,
+                textContent: plainText,
+                htmlContent: htmlBody,
             }),
         });
         const data = await response.json();

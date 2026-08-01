@@ -4,7 +4,7 @@ const upload = multer({
     storage: multer.memoryStorage(),
 
     limits: {
-         fileSize: 10 * 1024 * 1024, // 10 MB
+        fileSize: 10 * 1024 * 1024, // 10 MB
     },
 
     fileFilter(req, file, cb) {
@@ -19,4 +19,20 @@ const upload = multer({
     },
 });
 
-export default upload;
+const excelUpload = multer({
+    storage: multer.memoryStorage(),
+
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10 MB
+    },
+
+    fileFilter(req, file, cb) {
+        const isExcel = /\.(xlsx|xls)$/i.test(file.originalname || "");
+        if (!isExcel) {
+            return cb(new Error("Only Excel files (.xlsx, .xls) are allowed."));
+        }
+        cb(null, true);
+    },
+});
+
+export  {upload, excelUpload};

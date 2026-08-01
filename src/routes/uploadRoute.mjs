@@ -1,5 +1,5 @@
 import express from "express";
-import upload from "../middleware/upload.mjs";
+import {upload} from "../middleware/upload.mjs";
 import { deleteImage, uploadImage, uploadStudentImage } from "../controllers/uploadController.mjs";
 import { authenticate } from "../auth/authorization.mjs";
 

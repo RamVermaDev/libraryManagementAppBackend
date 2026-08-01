@@ -1500,13 +1500,13 @@ const refundStudent = async (req, res) => {
 
         // --- 4. UPDATE STUDENT FINANCIALS ---
 
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        const yesterday = new Date(Date.now() - oneDayMs);
+        // Set expire date to today (1 second ago so it is immediately expired, but retains today's date)
+        const expiredToday = new Date(Date.now() - 1000);
 
         student.totalPaid = Math.max(0, student.totalPaid - numericRefund);
         student.totalPending = 0;    // waived — reservation cancelled
         student.seatId = null;        // seat released
-        student.currentExpireDate = yesterday; // mark as expired immediately
+        student.currentExpireDate = expiredToday; // mark as expired today
         await student.save({ session });
 
         await session.commitTransaction();
@@ -2115,6 +2115,79 @@ const deleteStudent = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent }
+const globalSearchStudents = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId } = req.params;
+        const query = req.query.query ? req.query.query.trim() : "";
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library ID",
+            });
+        }
+
+        const library = await libraryModel
+            .findOne({
+                _id: libraryId,
+                ownerId: userId,
+            })
+            .select("_id")
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have access to this library",
+            });
+        }
+
+        if (!query) {
+            return res.status(200).json({
+                success: true,
+                message: "Search query empty",
+                data: { students: [] },
+            });
+        }
+
+        const cleanPhoneQuery = query.replace(/\D/g, "");
+        const orConditions = [
+            { name: { $regex: query, $options: "i" } },
+        ];
+
+        if (cleanPhoneQuery.length >= 2) {
+            orConditions.push({ phone: { $regex: cleanPhoneQuery, $options: "i" } });
+        } else {
+            orConditions.push({ phone: { $regex: query, $options: "i" } });
+        }
+
+        const students = await studentModel
+            .find({
+                libraryId: libraryId,
+                $or: orConditions,
+            })
+            .sort({ name: 1 })
+            .limit(50)
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: "Search completed successfully",
+            data: {
+                students: attachSignedPhotoUrls(students),
+            },
+        });
+    } catch (error) {
+        console.error("GLOBAL SEARCH ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to search students",
+        });
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents }
+
 
 

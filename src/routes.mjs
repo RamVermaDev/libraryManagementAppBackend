@@ -2,7 +2,7 @@ import express from 'express'
 import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -12,8 +12,9 @@ import { createSlot, deleteSlot, editSlot, listSlots, updateSlotStatus } from '.
 import { getAvailability } from './claude/availabilityController.mjs'
 import { cancelReservation, editReservation, renewReservation, createReservation } from './claude/bookingController.mjs'
 import { getSeatMapForSlot } from './claude/seatMapController.mjs'
-import upload from './middleware/upload.mjs'
+import { upload, excelUpload } from './middleware/upload.mjs'
 import { deleteImage, uploadImage } from './controllers/uploadController.mjs'
+import { bulkImportStudents, clearLibraryData, downloadSampleTemplate } from './controllers/bulkImportController.mjs'
 
 
 const routes = express.Router()
@@ -53,6 +54,7 @@ routes.get('/api/:libraryId/getactivestudents', authenticate, getActiveStudents)
 routes.get('/api/:libraryId/getexpiredstudents', authenticate, getExpiredStudents)
 routes.get('/api/:libraryId/getexpiringstudents', authenticate, getExpiringStudents)
 routes.get('/api/:libraryId/getpendingstudents', authenticate, getPendingStudents)
+routes.get('/api/:libraryId/students/search', authenticate, globalSearchStudents)
 
 //API related to TASK
 routes.post('/api/addtask', authenticate, addTask)
@@ -103,5 +105,10 @@ routes.patch("/reservations/:reservationId", editReservation);
 //API related to IMAGE UPLOAD & DELETE
 routes.post("/image", upload.single("image"), uploadImage);
 routes.delete("/image/delete", authenticate, deleteImage);
+
+//API related to BULK EXCEL IMPORT & TEMPLATE
+routes.get("/api/:libraryId/download-student-template", downloadSampleTemplate);
+routes.post("/api/:libraryId/bulk-import-students", excelUpload.single("file"), bulkImportStudents);
+routes.delete("/api/:libraryId/clear-library-data", authenticate, clearLibraryData);
 
 export default routes;

@@ -2187,7 +2187,34 @@ const globalSearchStudents = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents }
+const getStudentFeeRecords = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Library ID or Student ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id');
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'Library not found or access denied' });
+        }
+
+        const feeRecords = await feeRecordModel.find({ libraryId, studentId }).sort({ createdAt: -1 }).lean();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Fee records fetched successfully',
+            data: { feeRecords },
+        });
+    } catch (error) {
+        console.error('GET STUDENT FEE RECORDS ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to fetch fee records' });
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords }
 
 
 

@@ -73,7 +73,8 @@ const createSubscriptionOrder = async (req, res) => {
  */
 const verifySubscriptionPayment = async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan = 'monthly' } = req.body;
+        // plan is NOT read from req.body — client cannot be trusted for this
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
             return res.status(400).json({
@@ -94,10 +95,51 @@ const verifySubscriptionPayment = async (req, res) => {
             });
         }
 
+        // Fetch original order from Razorpay to get server-written notes.plan
+        // Client cannot forge this — notes were written by our server during createOrder
+        const authHeader = 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+        const orderRes = await fetch(`https://api.razorpay.com/v1/orders/${razorpay_order_id}`, {
+            headers: { 'Authorization': authHeader },
+        });
+        const orderData = await orderRes.json();
+
+        if (!orderRes.ok) {
+            console.error('Razorpay Order Fetch Failed:', orderData);
+            return res.status(400).json({
+                success: false,
+                message: 'Could not verify order details with Razorpay.',
+            });
+        }
+
+        // Read plan from notes — guaranteed to be what our server originally set
+        const plan = orderData.notes?.plan ?? 'monthly';
+
         const user = await userModel.findById(req.user._id);
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+
+        // Idempotency check — if this exact payment was already applied, return success without modifying again
+        if (user.subscription?.paymentId === razorpay_payment_id) {
+            return res.status(200).json({
+                success: true,
+                message: 'Payment already applied.',
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    isEmailVerified: user.isEmailVerified,
+                    libraries: user.libraries,
+                    createdAt: user.createdAt,
+                    subscription: {
+                        plan: user.subscription.plan,
+                        status: user.subscription.status,
+                        startAt: user.subscription.startAt,
+                        endAt: user.subscription.endAt,
+                    },
+                },
+            });
         }
 
         const isYearly = plan === 'yearly';

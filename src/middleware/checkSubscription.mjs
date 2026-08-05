@@ -14,8 +14,8 @@ const checkSubscription = (req, res, next) => {
 
     const { status, endAt } = subscription;
 
-    // "active" paid plan — always allowed
-    if (status === 'active') return next();
+    // "active" paid plan — allowed only if endAt is still in the future
+    if (status === 'active' && endAt && new Date(endAt) > new Date()) return next();
 
     // Trial or expired — check the date
     if (endAt && new Date(endAt) < new Date()) {

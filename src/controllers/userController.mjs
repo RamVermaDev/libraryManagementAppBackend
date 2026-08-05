@@ -525,8 +525,6 @@ const verifyAdminModeOtp = async (req, res) => {
     }
 };
 
-export { signupUser, loginUser, updateProfile, sendEmailVerificationOtp, verifyEmailOtp, getCurrentUser, sendAdminModeOtp, verifyAdminModeOtp, getSubscriptionStatus }
-
 // GET /api/subscription/status
 // Returns fresh subscription data + backend-controlled pricing
 const getSubscriptionStatus = async (req, res) => {
@@ -564,3 +562,5 @@ const getSubscriptionStatus = async (req, res) => {
         return res.status(500).json({ success: false, message: 'Something went wrong.' });
     }
 };
+
+export { signupUser, loginUser, updateProfile, sendEmailVerificationOtp, verifyEmailOtp, getCurrentUser, sendAdminModeOtp, verifyAdminModeOtp, getSubscriptionStatus }

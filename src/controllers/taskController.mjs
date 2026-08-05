@@ -16,6 +16,7 @@ const addTask = async (req, res) => {
       description,
       dueDate,
       urgency,
+      assignedToRole: requestedAssignedRole,
     } = req.body;
 
 
@@ -82,6 +83,18 @@ const addTask = async (req, res) => {
     }
     
 
+    const createdByMode = req.appMode === 'reception' ? 'reception' : 'admin';
+    let assignedToRole = 'admin';
+    if (requestedAssignedRole === 'self') {
+      assignedToRole = createdByMode;
+    } else if (requestedAssignedRole === 'reception') {
+      assignedToRole = 'reception';
+    } else if (requestedAssignedRole === 'admin') {
+      assignedToRole = 'admin';
+    } else {
+      assignedToRole = createdByMode;
+    }
+
     // 7. Create task
     const task = await taskModel.create({
       libraryId: library._id,
@@ -89,6 +102,8 @@ const addTask = async (req, res) => {
       description: cleanDescription,
       dueDate: parsedDueDate,
       urgency: cleanUrgency,
+      createdByMode,
+      assignedToRole,
     });
 
     return res.status(201).json({

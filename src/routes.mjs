@@ -1,5 +1,8 @@
 import express from 'express'
-import { getCurrentUser, loginUser, sendEmailVerificationOtp, signupUser, updateProfile, verifyEmailOtp } from './controllers/userController.mjs'
+import { appModeMiddleware } from './middleware/appModeMiddleware.mjs'
+import { checkSubscription } from './middleware/checkSubscription.mjs'
+import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus } from './controllers/userController.mjs'
+import { createSubscriptionOrder, verifySubscriptionPayment } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
 import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords } from './controllers/studentController.mjs'
@@ -19,6 +22,8 @@ import { bulkImportStudents, clearLibraryData, downloadSampleTemplate } from './
 
 const routes = express.Router()
 
+routes.use(appModeMiddleware)
+
 
 routes.get('/', (req, res) => {
     return res.send('Hello Routes')
@@ -30,7 +35,12 @@ routes.post('/api/login', loginUser)
 routes.put('/api/profile', authenticate, updateProfile)
 routes.post('/api/verify-email', authenticate, sendEmailVerificationOtp)
 routes.post('/api/otp-verify', authenticate, verifyEmailOtp)
+routes.post('/api/send-admin-otp', authenticate, sendAdminModeOtp)
+routes.post('/api/verify-admin-otp', authenticate, verifyAdminModeOtp)
 routes.get('/api/verify-token', authenticate, getCurrentUser)
+routes.get('/api/subscription/status', authenticate, getSubscriptionStatus)
+routes.post('/api/subscription/create-order', authenticate, createSubscriptionOrder)
+routes.post('/api/subscription/verify-payment', authenticate, verifySubscriptionPayment)
 
 //Library related API
 routes.post('/api/createlibrary', authenticate, createLibrary)
@@ -38,16 +48,16 @@ routes.get('/api/my-libraries', authenticate, getOwnerLibraries)
 routes.patch('/api/:libraryId/updatelibrary', authenticate, updateLibrary)
 
 //Student related API
-routes.post('/api/addstudent', authenticate, addStudent)
-routes.patch('/api/:libraryId/students/:studentId/profile', authenticate, updateStudentProfile)
-routes.patch('/api/:libraryId/students/:studentId/clear-pending', authenticate, clearStudentPending)
-routes.patch('/api/:libraryId/students/:studentId/refund', authenticate, refundStudent)
-routes.patch('/api/:libraryId/students/:studentId/renew', authenticate, renewStudent)
-routes.patch('/api/:libraryId/students/:studentId/pause', authenticate, pauseStudent)
-routes.patch('/api/:libraryId/students/:studentId/resume', authenticate, resumeStudent)
-routes.patch('/api/:libraryId/students/:studentId/blacklist', authenticate, blacklistStudent)
-routes.patch('/api/:libraryId/students/:studentId/unblock', authenticate, unblockStudent)
-routes.delete('/api/:libraryId/students/:studentId', authenticate, deleteStudent)
+routes.post('/api/addstudent', authenticate, checkSubscription, addStudent)
+routes.patch('/api/:libraryId/students/:studentId/profile', authenticate, checkSubscription, updateStudentProfile)
+routes.patch('/api/:libraryId/students/:studentId/clear-pending', authenticate, checkSubscription, clearStudentPending)
+routes.patch('/api/:libraryId/students/:studentId/refund', authenticate, checkSubscription, refundStudent)
+routes.patch('/api/:libraryId/students/:studentId/renew', authenticate, checkSubscription, renewStudent)
+routes.patch('/api/:libraryId/students/:studentId/pause', authenticate, checkSubscription, pauseStudent)
+routes.patch('/api/:libraryId/students/:studentId/resume', authenticate, checkSubscription, resumeStudent)
+routes.patch('/api/:libraryId/students/:studentId/blacklist', authenticate, checkSubscription, blacklistStudent)
+routes.patch('/api/:libraryId/students/:studentId/unblock', authenticate, checkSubscription, unblockStudent)
+routes.delete('/api/:libraryId/students/:studentId', authenticate, checkSubscription, deleteStudent)
 routes.get('/api/:libraryId/sudentsummary', authenticate, getStudentSummary)
 routes.get('/api/:libraryId/getstudents', authenticate, getStudents)
 routes.get('/api/:libraryId/getactivestudents', authenticate, getActiveStudents)
@@ -58,14 +68,14 @@ routes.get('/api/:libraryId/students/search', authenticate, globalSearchStudents
 routes.get('/api/:libraryId/students/:studentId/feerecords', authenticate, getStudentFeeRecords)
 
 //API related to TASK
-routes.post('/api/addtask', authenticate, addTask)
+routes.post('/api/addtask', authenticate, checkSubscription, addTask)
 routes.patch("/api/:taskId/completetask", authenticate, completeTask)
 routes.delete("/api/:taskId/deletetask", authenticate, deleteTask)
-routes.patch("/api/:taskId/edittask", authenticate, editTask)
+routes.patch("/api/:taskId/edittask", authenticate, checkSubscription, editTask)
 routes.get("/api/:libraryId/getalltask", authenticate, getAllTasks)
 
 //API related to EXPENSE
-routes.post('/api/addexpense', authenticate, addExpense)
+routes.post('/api/addexpense', authenticate, checkSubscription, addExpense)
 routes.delete('/api/deleteexpense/:expenseId', authenticate, deleteExpense)
 
 //API related to DASHBOARD
@@ -85,11 +95,11 @@ routes.patch("/api/seats/:seatId/status", updateSeatStatus); //status
 
 
 //API related to SLOTS
-routes.post("/api/:libraryId/slot", createSlot); //create
-routes.get("/api/:libraryId/slots", listSlots); //addMore
-routes.patch("/api/:slotId/status", updateSlotStatus);//UpdateStatus
-routes.patch("/api/:slotId/editslot", editSlot) //editSlot
-routes.delete("/api/:slotId/deleteslot", deleteSlot) //DeleteSlot
+routes.post("/api/:libraryId/slot", authenticate, checkSubscription, createSlot)
+routes.get("/api/:libraryId/slots", listSlots)
+routes.patch("/api/:slotId/status", updateSlotStatus)
+routes.patch("/api/:slotId/editslot", authenticate, checkSubscription, editSlot)
+routes.delete("/api/:slotId/deleteslot", deleteSlot)
 
 // The booking-screen endpoint: shows every slot template + live seat availability
 routes.get("/api/:libraryId/slots/availability", getAvailability);

@@ -36,15 +36,20 @@ const getPayments = async (req, res) => {
       });
     }
 
+    const month = req.query.month ? parseInt(req.query.month) : null;
+    const year = req.query.year ? parseInt(req.query.year) : null;
+
+    const query = { libraryId: library._id };
+
+    if (month && year) {
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+      query.paymentDate = { $gte: startDate, $lte: endDate };
+    }
+
     // 3. Fetch payments
     const payments = await paymentModel
-      .find({
-        libraryId: library._id,
-      })
-      .populate({
-        path: "student",
-        select: "name memberId mobile profileImage",
-      })
+      .find(query)
       .sort({
         paymentDate: -1,
         _id: -1,

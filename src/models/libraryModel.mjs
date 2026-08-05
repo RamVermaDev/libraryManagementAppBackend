@@ -81,35 +81,6 @@ const librarySchema = new mongoose.Schema({
         default: 0
     },
 
-    // Subscription
-
-    subscription: {
-
-        plan: {
-            type: String,
-            enum: [
-                "free",
-                "basic",
-                "premium"
-            ],
-            default: "free"
-        },
-
-        status: {
-            type: String,
-            enum: [
-                "active",
-                "expired"
-            ],
-            default: "active"
-        },
-
-        startAt: Date,
-
-        endAt: Date
-
-    },
-
     // Seat Layout Config
 
     seatLayout: {

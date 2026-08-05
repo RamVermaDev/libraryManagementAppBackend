@@ -286,10 +286,6 @@ const getRecentPayments = async (libraryId) => {
         .find({
             $or: [{ libraryId: objectId }, { library: objectId }],
         })
-        .populate({
-            path: "student",
-            select: "name memberId profileImage",
-        })
         .sort({
             paymentDate: -1,
             createdAt: -1,

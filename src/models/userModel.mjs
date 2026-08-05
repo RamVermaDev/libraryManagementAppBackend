@@ -73,7 +73,7 @@ const userSchema = new mongoose.Schema(
         subscription: {
             plan: {
                 type: String,
-                default: "free",
+                default: "trial",
             },
 
             status: {

@@ -87,6 +87,7 @@ const addExpense = async (req, res) => {
       category: cleanCategory,
       expenseDate: parsedExpenseDate,
       description: cleanDescription,
+      addedBy: req.appMode === 'reception' ? 'reception' : 'admin',
     });
 
     return res.status(201).json({

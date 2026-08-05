@@ -52,6 +52,18 @@ const taskSchema = new Schema(
       type: Date,
       default: null,
     },
+
+    createdByMode: {
+      type: String,
+      enum: ["admin", "reception"],
+      default: "admin",
+    },
+
+    assignedToRole: {
+      type: String,
+      enum: ["admin", "reception"],
+      default: "admin",
+    },
   },
   {
     timestamps: true,

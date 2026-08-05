@@ -49,6 +49,12 @@ const expenseSchema = new mongoose.Schema(
             maxlength: 200,
             default: '',
         },
+
+        addedBy: {
+            type: String,
+            enum: ['admin', 'reception'],
+            default: 'admin',
+        },
     },
     {
         timestamps: true,

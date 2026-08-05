@@ -96,33 +96,43 @@ export async function getSeatConfiguration(libraryId) {
   const library = await libraryModel.findById(libraryId).lean();
   if (!library) throw new Error("Library not found");
 
-  const seatLayout = library.seatLayout || { rows: 5, columns: 10 };
+  const seatLayout = library.seatLayout || {};
   const seats = await seatModel.find({ libraryId }).sort({ seatNumber: 1 }).lean();
 
   const totalSeats = Math.max(library.totalSeats || 0, seats.length);
   const activeCount = await seatModel.countDocuments({ libraryId, status: "active" });
 
+  const firstSeatLabel = seats.length > 0 ? seats[0].label : '';
+  const detectedPrefix = firstSeatLabel ? (String(firstSeatLabel).match(/^([A-Za-z]+)/)?.[1] ?? 'A') : 'A';
+
+  const cols = seatLayout.columns || 6;
+  const rws = seatLayout.rows || (totalSeats > 0 ? Math.ceil(totalSeats / cols) : 1);
+
   return {
     totalSeats,
     availableSeats: activeCount,
-    rows: seatLayout.rows || 5,
-    columns: seatLayout.columns || 10,
+    rows: rws,
+    columns: cols,
+    prefix: detectedPrefix,
     seats,
   };
 }
 
 /**
  * Update total seats, row/col layout with safety checks on decrease.
+ * Iterates and updates all seat labels when prefix is modified.
  */
-export async function updateSeatConfiguration(libraryId, { totalSeats, rows, columns }) {
+export async function updateSeatConfiguration(libraryId, { totalSeats, rows, columns, prefix }) {
   const library = await libraryModel.findById(libraryId);
   if (!library) throw new Error("Library not found");
 
   const existingSeats = await seatModel.find({ libraryId }).sort({ seatNumber: 1 });
   const currentTotal = Math.max(library.totalSeats || 0, existingSeats.length);
   const targetTotal = Number(totalSeats) > 0 ? Number(totalSeats) : currentTotal;
-  const targetRows = Number(rows) > 0 ? Number(rows) : (library.seatLayout?.rows || 5);
-  const targetColumns = Number(columns) > 0 ? Number(columns) : (library.seatLayout?.columns || 10);
+
+  const targetColumns = Number(columns) > 0 ? Number(columns) : (library.seatLayout?.columns || 6);
+  const targetRows = Number(rows) > 0 ? Number(rows) : (library.seatLayout?.rows || (targetTotal > 0 ? Math.ceil(targetTotal / targetColumns) : 1));
+  const targetPrefix = prefix && String(prefix).trim().length > 0 ? String(prefix).trim() : null;
 
   // 1. If decreasing seats, check for active student bookings on affected seats
   if (targetTotal < currentTotal) {
@@ -163,18 +173,25 @@ export async function updateSeatConfiguration(libraryId, { totalSeats, rows, col
     }
   }
 
-  // 2. If increasing seats, insert new seat documents
-  if (targetTotal > currentTotal) {
-    const firstSeatLabel = existingSeats.length > 0 ? existingSeats[0].label : '';
-    const prefixMatch = String(firstSeatLabel).match(/^([A-Za-z]+)/);
-    const prefix = prefixMatch ? prefixMatch[1] : 'A';
+  // 2. If prefix changed, update all existing seat labels in MongoDB directly
+  const effectivePrefix = targetPrefix || (existingSeats.length > 0 ? (String(existingSeats[0].label).match(/^([A-Za-z0-9]+)/)?.[1] ?? 'A') : 'A');
+  if (targetPrefix && existingSeats.length > 0) {
+    for (const seat of existingSeats) {
+      if (seat.seatNumber <= targetTotal) {
+        seat.label = `${effectivePrefix}-${seat.seatNumber}`;
+        await seat.save();
+      }
+    }
+  }
 
+  // 3. If increasing seats, insert new seat documents with the new prefix
+  if (targetTotal > currentTotal) {
     const newSeats = [];
     for (let seatNumber = currentTotal + 1; seatNumber <= targetTotal; seatNumber++) {
       newSeats.push({
         libraryId,
         seatNumber,
-        label: `${prefix}-${seatNumber}`,
+        label: `${effectivePrefix}-${seatNumber}`,
         status: "active",
       });
     }
@@ -183,7 +200,7 @@ export async function updateSeatConfiguration(libraryId, { totalSeats, rows, col
     }
   }
 
-  // 3. Update library document
+  // 4. Update library document
   library.totalSeats = targetTotal;
   library.seatLayout = {
     rows: targetRows,
@@ -200,6 +217,7 @@ export async function updateSeatConfiguration(libraryId, { totalSeats, rows, col
     availableSeats: activeCount,
     rows: library.seatLayout.rows,
     columns: library.seatLayout.columns,
+    prefix: effectivePrefix,
     seats: updatedSeats,
   };
 }

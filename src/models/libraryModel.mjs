@@ -90,7 +90,7 @@ const librarySchema = new mongoose.Schema({
         },
         columns: {
             type: Number,
-            default: 10
+            default: 6
         }
     },
 

@@ -51,7 +51,10 @@ export const createLibrary = async (req, res) => {
             });
         }
 
-        // Create Library
+        // Create Library with default 6 columns
+        const defaultColumns = 6;
+        const defaultRows = seatsCount > 0 ? Math.ceil(seatsCount / defaultColumns) : 1;
+
         const library = new libraryModel({
             ownerId,
             libraryName,
@@ -61,6 +64,10 @@ export const createLibrary = async (req, res) => {
             state,
             pinCode,
             totalSeats: seatsCount,
+            seatLayout: {
+                rows: defaultRows,
+                columns: defaultColumns,
+            },
         });
 
         await library.save({ session });

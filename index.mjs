@@ -21,7 +21,11 @@ mongoose.connect(MONGODB_URI).then(() => {
 
 console.log("Setting up upload index...");
 
-app.use(express.json())
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}))
 
 app.use('/', routes)
 app.use("/api/upload", uploadRoute);

@@ -195,4 +195,91 @@ const verifySubscriptionPayment = async (req, res) => {
     }
 };
 
-export { createSubscriptionOrder, verifySubscriptionPayment };
+/**
+ * POST /api/subscription/webhook
+ * Razorpay Webhook listener — handles payment.captured and order.paid events.
+ * Server-to-server safety net for dropped connections on client devices.
+ */
+const handleRazorpayWebhook = async (req, res) => {
+    try {
+        const webhookSignature = req.headers['x-razorpay-signature'];
+
+        if (RAZORPAY_WEBHOOK_SECRET) {
+            if (!webhookSignature) {
+                return res.status(400).json({ success: false, message: 'Missing Razorpay signature header.' });
+            }
+
+            // Verify Webhook HMAC SHA256 Signature using raw body Buffer if present
+            const hmac = crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET);
+            const payload = req.rawBody ? req.rawBody : JSON.stringify(req.body);
+            hmac.update(payload);
+            const expectedSignature = hmac.digest('hex');
+
+            if (expectedSignature !== webhookSignature) {
+                console.error('Razorpay Webhook Signature Mismatch');
+                return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
+            }
+        }
+
+        const event = req.body.event;
+
+        // Process payment.captured or order.paid
+        if (event === 'payment.captured' || event === 'order.paid') {
+            const paymentEntity = req.body.payload?.payment?.entity;
+            const notes = paymentEntity?.notes || req.body.payload?.order?.entity?.notes || {};
+
+            const userId = notes.userId;
+            const plan = notes.plan || 'monthly';
+            const paymentId = paymentEntity?.id;
+
+            if (!userId) {
+                console.log('Webhook: No userId in payment notes, ignoring.');
+                return res.status(200).json({ success: true, message: 'Event ignored (no userId)' });
+            }
+
+            const user = await userModel.findById(userId);
+            if (!user) {
+                console.log(`Webhook: User ${userId} not found.`);
+                return res.status(404).json({ success: false, message: 'User not found' });
+            }
+
+            // Idempotency check — skip if payment already processed
+            if (paymentId && user.subscription?.paymentId === paymentId) {
+                return res.status(200).json({ success: true, message: 'Payment already processed' });
+            }
+
+            const isYearly = plan === 'yearly';
+            const addDays = isYearly ? 365 : 30;
+
+            const currentEndAt = user.subscription?.endAt ? new Date(user.subscription.endAt) : null;
+            const now = new Date();
+            const baseDate = (currentEndAt && currentEndAt > now) ? currentEndAt : now;
+
+            const newEndAt = new Date(baseDate);
+            newEndAt.setDate(newEndAt.getDate() + addDays);
+
+            user.subscription = {
+                plan: isYearly ? 'yearly' : 'monthly',
+                status: 'active',
+                startAt: now,
+                endAt: newEndAt,
+                paymentId: paymentId || user.subscription?.paymentId,
+                paymentProvider: 'razorpay',
+                amount: isYearly ? YEARLY_PRICE : MONTHLY_PRICE,
+                currency: 'INR',
+                autoRenew: false,
+            };
+
+            await user.save();
+            console.log(`Webhook: Subscription activated for user ${userId} (${plan})`);
+        }
+
+        return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+
+    } catch (error) {
+        console.error('Razorpay Webhook Error:', error);
+        return res.status(500).json({ success: false, message: 'Webhook processing error' });
+    }
+};
+
+export { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook };

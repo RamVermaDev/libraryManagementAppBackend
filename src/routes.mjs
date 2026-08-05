@@ -2,7 +2,7 @@ import express from 'express'
 import { appModeMiddleware } from './middleware/appModeMiddleware.mjs'
 import { checkSubscription } from './middleware/checkSubscription.mjs'
 import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus } from './controllers/userController.mjs'
-import { createSubscriptionOrder, verifySubscriptionPayment } from './controllers/subscriptionController.mjs'
+import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
 import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords } from './controllers/studentController.mjs'
@@ -41,6 +41,7 @@ routes.get('/api/verify-token', authenticate, getCurrentUser)
 routes.get('/api/subscription/status', authenticate, getSubscriptionStatus)
 routes.post('/api/subscription/create-order', authenticate, createSubscriptionOrder)
 routes.post('/api/subscription/verify-payment', authenticate, verifySubscriptionPayment)
+routes.post('/api/subscription/webhook', handleRazorpayWebhook)
 
 //Library related API
 routes.post('/api/createlibrary', authenticate, createLibrary)

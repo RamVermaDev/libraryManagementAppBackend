@@ -105,12 +105,13 @@ export async function getSeatConfig(req, res) {
 export async function updateSeatConfig(req, res) {
   try {
     const { libraryId } = req.params;
-    const { totalSeats, rows, columns } = req.body;
+    const { totalSeats, rows, columns, prefix, seatPrefix } = req.body;
 
     const config = await updateSeatConfiguration(libraryId, {
       totalSeats,
       rows,
       columns,
+      prefix: prefix || seatPrefix,
     });
 
     return res.status(200).json({

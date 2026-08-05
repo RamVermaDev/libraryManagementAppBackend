@@ -510,6 +510,7 @@ const getStudents = async (req, res) => {
             .find({
                 libraryId: libraryId,
             })
+            .populate("seatId", "label seatNumber")
             .sort({
                 createdAt: -1,
                 _id: -1,
@@ -607,6 +608,7 @@ const getActiveStudents = async (req, res) => {
                     $gte: today,
                 },
             })
+            .populate("seatId", "label seatNumber")
             .sort({
                 createdAt: -1,
                 _id: -1,
@@ -733,6 +735,7 @@ const getExpiredStudents = async (req, res) => {
                     $lte: rangeEnd,
                 },
             })
+            .populate("seatId", "label seatNumber")
             .sort({
                 currentExpireDate: -1,
                 _id: -1,
@@ -858,6 +861,7 @@ const getExpiringStudents = async (req, res) => {
                     $lte: rangeEnd,
                 },
             })
+            .populate("seatId", "label seatNumber")
             .sort({
                 currentExpireDate: 1,
                 _id: -1,
@@ -936,6 +940,7 @@ const getPendingStudents = async (req, res) => {
                 libraryId: libraryId,
                 totalPending: { $gt: 0 },
             })
+            .populate("seatId", "label seatNumber")
             .sort({
                 createdAt: -1,
                 _id: -1,

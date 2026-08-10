@@ -66,8 +66,8 @@ const sendEmail = async ({ to, subject, text, html }) => {
             },
             body: JSON.stringify({
                 sender: { 
-                    name: "Library Pro", 
-                    email: "libraryproappsupport@gmail.com" 
+                    name: "LibraryDesk", 
+                    email: "librarydesksupport@gmail.com" 
                 },
                 to: [{ email: to }],
                 subject: subject,

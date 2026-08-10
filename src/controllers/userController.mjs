@@ -230,8 +230,17 @@ const updateProfile = async (req, res) => {
 
         const isEmailChanged = req.user.email !== email;
 
+        if (req.user.isEmailVerified && isEmailChanged) {
+            return res.status(400).json({
+                success: false,
+                message: "Verified email address cannot be changed."
+            });
+        }
+
         req.user.name = name;
-        req.user.email = email;
+        if (!req.user.isEmailVerified) {
+            req.user.email = email;
+        }
 
         if (isEmailChanged) {
             req.user.isEmailVerified = false;
@@ -563,4 +572,207 @@ const getSubscriptionStatus = async (req, res) => {
     }
 };
 
-export { signupUser, loginUser, updateProfile, sendEmailVerificationOtp, verifyEmailOtp, getCurrentUser, sendAdminModeOtp, verifyAdminModeOtp, getSubscriptionStatus }
+const sendForgotPasswordOtp = async (req, res) => {
+    try {
+        let { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: "Email address is required."
+            });
+        }
+
+        email = email.trim().toLowerCase();
+
+        const user = await userModel.findOne({ email, isDeleted: false });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "No registered account found with this email."
+            });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        user.resetPasswordOtp = otp;
+        user.resetPasswordOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+        await user.save();
+
+        await sendEmail({
+            to: user.email,
+            subject: "Password Reset OTP - Library Desk",
+            html: `
+                <h2>Library Desk</h2>
+                <p>Hello ${user.name},</p>
+                <p>We received a request to reset your password. Your 6-digit OTP code is:</p>
+                <h1 style="letter-spacing:8px">${otp}</h1>
+                <p>This OTP will expire in <strong>10 minutes</strong>.</p>
+                <p>If you didn't request a password reset, please ignore this email.</p>
+            `
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: `OTP sent to ${user.email}`,
+        });
+    } catch (error) {
+        console.error("SEND FORGOT PASSWORD OTP ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to send Password Reset OTP."
+        });
+    }
+};
+
+const verifyForgotPasswordOtp = async (req, res) => {
+    try {
+        let { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: "Email and OTP are required."
+            });
+        }
+
+        email = email.trim().toLowerCase();
+        otp = String(otp).trim();
+
+        const user = await userModel.findOne({ email, isDeleted: false });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        if (!user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
+            return res.status(400).json({
+                success: false,
+                message: "No active OTP request found. Please request an OTP first."
+            });
+        }
+
+        if (new Date() > new Date(user.resetPasswordOtpExpires)) {
+            user.resetPasswordOtp = undefined;
+            user.resetPasswordOtpExpires = undefined;
+            await user.save();
+
+            return res.status(400).json({
+                success: false,
+                message: "OTP has expired. Please request a new OTP."
+            });
+        }
+
+        if (user.resetPasswordOtp !== otp) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid OTP code."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP verified successfully.",
+        });
+    } catch (error) {
+        console.error("VERIFY FORGOT PASSWORD OTP ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to verify OTP."
+        });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        let { email, otp, newPassword } = req.body;
+
+        if (!email || !otp || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "Email, OTP, and new password are required."
+            });
+        }
+
+        email = email.trim().toLowerCase();
+        otp = String(otp).trim();
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "New password must be at least 6 characters long."
+            });
+        }
+
+        const user = await userModel.findOne({ email, isDeleted: false });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found."
+            });
+        }
+
+        if (!user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
+            return res.status(400).json({
+                success: false,
+                message: "No active password reset request found."
+            });
+        }
+
+        if (new Date() > new Date(user.resetPasswordOtpExpires)) {
+            return res.status(400).json({
+                success: false,
+                message: "OTP has expired. Please request a new OTP."
+            });
+        }
+
+        if (user.resetPasswordOtp !== otp) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid OTP code."
+            });
+        }
+
+        const salt = await bcrypt.genSalt(BCRYPT_SALT_ROUND);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        user.password = hashedPassword;
+        user.passwordChangedAt = new Date();
+        user.resetPasswordOtp = undefined;
+        user.resetPasswordOtpExpires = undefined;
+
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Password reset successfully. Please login with your new password."
+        });
+    } catch (error) {
+        console.error("RESET PASSWORD ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to reset password."
+        });
+    }
+};
+
+export {
+    signupUser,
+    loginUser,
+    updateProfile,
+    sendEmailVerificationOtp,
+    verifyEmailOtp,
+    getCurrentUser,
+    sendAdminModeOtp,
+    verifyAdminModeOtp,
+    getSubscriptionStatus,
+    sendForgotPasswordOtp,
+    verifyForgotPasswordOtp,
+    resetPassword
+}

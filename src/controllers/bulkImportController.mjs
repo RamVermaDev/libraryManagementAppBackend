@@ -9,8 +9,23 @@ import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
 import { reservationModel } from "../claude/ReservationModel.mjs";
 
 /**
+ * Helper to convert minutes-from-midnight into formatted 12-hour AM/PM string
+ */
+const formatMinutesToAmPm = (minutes) => {
+    if (minutes === undefined || minutes === null) return "06:00 AM";
+    const norm = ((minutes % 1440) + 1440) % 1440;
+    let hours = Math.floor(norm / 60);
+    const mins = norm % 60;
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minsStr = mins < 10 ? '0' + mins : mins;
+    return `${hours}:${minsStr} ${ampm}`;
+};
+
+/**
  * Serves / downloads pre-formatted sample Excel template (.xlsx)
- * Ultra-simple format: Student Name, Phone Number, Expire Date
+ * Columns: Student Name, Phone Number, Expire Date, Slot Timing
  */
 export const downloadSampleTemplate = async (req, res) => {
     try {
@@ -18,12 +33,14 @@ export const downloadSampleTemplate = async (req, res) => {
             {
                 "Student Name": "Rahul Sharma",
                 "Phone Number": "9876543210",
-                "Expire Date (YYYY-MM-DD)": "2026-08-30"
+                "Expire Date (YYYY-MM-DD)": "2026-08-30",
+                "Slot Timing": "06:00 AM - 12:00 PM"
             },
             {
                 "Student Name": "Priya Singh",
                 "Phone Number": "9812345678",
-                "Expire Date (YYYY-MM-DD)": "2026-07-28"
+                "Expire Date (YYYY-MM-DD)": "2026-07-28",
+                "Slot Timing": "02:00 PM - 08:00 PM"
             }
         ];
 
@@ -31,7 +48,8 @@ export const downloadSampleTemplate = async (req, res) => {
         worksheet["!cols"] = [
             { wch: 22 }, // Student Name
             { wch: 18 }, // Phone Number
-            { wch: 25 }  // Expire Date
+            { wch: 25 }, // Expire Date
+            { wch: 25 }  // Slot Timing
         ];
 
         const workbook = XLSX.utils.book_new();
@@ -62,11 +80,20 @@ export const bulkImportStudents = async (req, res) => {
             return res.status(400).json({ success: false, message: "Please upload a valid Excel file" });
         }
 
-        // Get default slot template for the library (fallback)
-        const defaultSlot = await slotTemplateModel.findOne({ libraryId, isActive: true }).lean();
+        // Get default active slot template or auto-create a Sample Slot if none exists
+        let defaultSlot = await slotTemplateModel.findOne({ libraryId, isActive: true });
         if (!defaultSlot) {
-            return res.status(400).json({ success: false, message: "Please create at least one active slot before importing students" });
+            defaultSlot = await slotTemplateModel.create({
+                libraryId,
+                name: "Sample Slot",
+                monthlyPrice: 0,
+                startMinute: 360, // 06:00 AM
+                endMinute: 720,  // 12:00 PM
+                isActive: true,
+            });
         }
+
+        const defaultSlotTimingStr = `${formatMinutesToAmPm(defaultSlot.startMinute)} - ${formatMinutesToAmPm(defaultSlot.endMinute)}`;
 
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
         const sheetName = workbook.SheetNames[0];
@@ -82,9 +109,12 @@ export const bulkImportStudents = async (req, res) => {
 
         for (const row of rows) {
             const name = (row["Student Name"] || row["Name"] || "").toString().trim();
-            const phone = (row["Phone Number"] || row["Phone"] || "").toString().replaceAll(/\D/g, "");
+            let phone = (row["Phone Number"] || row["Phone"] || "").toString().replaceAll(/\D/g, "");
+            if (phone.length > 10) {
+                phone = phone.slice(-10);
+            }
 
-            if (!name || !phone || phone.length < 10) {
+            if (!name || !phone || phone.length !== 10) {
                 skippedCount++;
                 continue;
             }
@@ -106,10 +136,14 @@ export const bulkImportStudents = async (req, res) => {
             const diffTime = Math.abs(expireDate - startDate);
             const planDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 30;
 
+            // Use Slot Timing from Excel row if provided, otherwise default slot timing
+            const rowSlotTiming = (row["Slot Timing"] || row["Timing"] || row["Slot"] || "").toString().trim();
+            const slotTiming = rowSlotTiming.length > 0 ? rowSlotTiming : defaultSlotTimingStr;
+
             studentsToInsert.push({
                 libraryId,
                 slotTemplateId: defaultSlot._id,
-                slotTiming: `${defaultSlot.startMinute ? Math.floor(defaultSlot.startMinute / 60) : 6}:00 AM - ${defaultSlot.endMinute ? Math.floor(defaultSlot.endMinute / 60) : 12}:00 PM`,
+                slotTiming: slotTiming,
                 seatId: null, // Unassigned physical seat initially
                 name,
                 phone,

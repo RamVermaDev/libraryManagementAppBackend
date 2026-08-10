@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { userModel } from '../models/userModel.mjs';
 import { MONTHLY_PRICE, YEARLY_PRICE, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } from '../../config.mjs';
+import sendEmail from '../utils/sendEmail.mjs';
 
 /**
  * POST /api/subscription/create-order
@@ -282,4 +283,64 @@ const handleRazorpayWebhook = async (req, res) => {
     }
 };
 
-export { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook };
+/**
+ * POST /api/subscription/manual-payment-submit
+ * Body: { plan: 'monthly' | 'yearly', amount: number, transactionId: string }
+ */
+const submitManualPayment = async (req, res) => {
+    try {
+        const { plan = 'monthly', amount, transactionId } = req.body;
+
+        if (!transactionId || transactionId.trim().length < 4) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please enter a valid transaction reference ID / UTR number.'
+            });
+        }
+
+        const user = req.user;
+        const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+        const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background-color: #ffffff;">
+            <h2 style="color: #0F172A; margin-bottom: 5px;">💳 New Manual Payment Notification</h2>
+            <p style="color: #64748B; font-size: 14px; margin-top: 0;">A user has submitted manual UPI payment details for subscription verification.</p>
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 15px 0;" />
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 8px 0; color: #64748B;">User Name:</td><td style="font-weight: bold; color: #0F172A;">${user.name}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748B;">User Email:</td><td style="font-weight: bold; color: #0F172A;">${user.email}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748B;">Plan Selected:</td><td style="font-weight: bold; color: #4F46E5;">${plan.toUpperCase()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748B;">Amount Claimed:</td><td style="font-weight: bold; color: #166534;">₹${amount}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748B;">Transaction ID / UTR:</td><td style="font-weight: bold; color: #DC2626; font-size: 16px;">${transactionId.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #64748B;">Submitted At:</td><td style="color: #334155;">${formattedDate}</td></tr>
+            </table>
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 15px 0;" />
+            <p style="font-size: 12px; color: #94A3B8;">Please verify the transaction in your PhonePe / GooglePay / Paytm UPI app and activate the user subscription.</p>
+        </div>
+        `;
+
+        try {
+            await sendEmail({
+                to: 'ramverma1493@gmail.com',
+                subject: `[Manual Payment Alert] ₹${amount} - ${user.name} (${transactionId.trim()})`,
+                text: `New manual payment submitted by ${user.name} (${user.email}). UTR: ${transactionId}. Amount: ₹${amount}. Plan: ${plan}`,
+                html: emailHtml,
+            });
+        } catch (emailErr) {
+            console.error('Manual payment owner email alert failed:', emailErr);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Payment notification submitted successfully! Our team will verify and activate your subscription within 1 hour.',
+        });
+    } catch (error) {
+        console.error('Submit Manual Payment Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Something went wrong while submitting payment details.'
+        });
+    }
+};
+
+export { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment };

@@ -51,6 +51,14 @@ const userSchema = new mongoose.Schema(
             type: Date,
         },
 
+        resetPasswordOtp: {
+            type: String,
+        },
+
+        resetPasswordOtpExpires: {
+            type: Date,
+        },
+
         role: {
             type: String,
             enum: ["admin", "librarian", "staff", "user"],

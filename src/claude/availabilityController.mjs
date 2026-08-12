@@ -15,12 +15,13 @@ async function getAvailability(req, res) {
     try {
         const { libraryId } = req.params;
         const date = req.query.date ? new Date(req.query.date) : new Date();
+        const excludeStudentId = req.query.excludeStudentId;
 
         if (isNaN(date.getTime())) {
             return res.status(400).json({ error: "Invalid date format" });
         }
 
-        const availability = await getSlotAvailability(libraryId, date);
+        const availability = await getSlotAvailability(libraryId, date, excludeStudentId);
 
         console.log(availability)
 

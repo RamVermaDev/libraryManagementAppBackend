@@ -33,7 +33,7 @@ function getDayBounds(dateInput) {
  * @param {String} slotTemplateId
  * @param {Date} [date]  defaults to today
  */
-async function getSeatMap(libraryId, slotTemplateId, date = new Date()) {
+async function getSeatMap(libraryId, slotTemplateId, date = new Date(), excludeStudentId = null) {
     const { startOfToday, startOfTomorrow } = getDayBounds(date);
 
     const slotTemplate = await slotTemplateModel.findOne({ _id: slotTemplateId, libraryId }).lean();
@@ -42,25 +42,25 @@ async function getSeatMap(libraryId, slotTemplateId, date = new Date()) {
     }
     const { startMinute, endMinute } = slotTemplate;
 
+    const reservationFilter = {
+        libraryId,
+        status: { $in: ["active", "overbooked_pending"] },
+        seatId: { $ne: null },
+        subscriptionStartDate: { $lt: startOfTomorrow },
+        subscriptionExpiryDate: { $gte: startOfToday },
+        startMinute: { $lt: endMinute },
+        endMinute: { $gt: startMinute }
+    };
+
+    if (excludeStudentId && excludeStudentId !== "null" && excludeStudentId !== "undefined") {
+        reservationFilter.studentId = { $ne: excludeStudentId };
+    }
+
     const [allSeats, activeReservations] = await Promise.all([
         seatModel.find({ libraryId, status: "active" }).sort({ seatNumber: 1 }).lean(),
 
         reservationModel
-            .find({
-                libraryId,
-                // both statuses count as "occupying" IF they have a seatId -
-                // overbooked_pending reservations have seatId: null, so they
-                // never show up as blocking a seat here, only in the
-                // capacity count on the availability screen.
-                status: { $in: ["active", "overbooked_pending"] },
-                seatId: { $ne: null },
-                subscriptionStartDate: { $lt: startOfTomorrow },
-                subscriptionExpiryDate: { $gte: startOfToday },
-                // time-window overlap with the requested slot, filtered
-                // directly in the query
-                startMinute: { $lt: endMinute },
-                endMinute: { $gt: startMinute }
-            })
+            .find(reservationFilter)
             .select("seatId studentId startMinute endMinute")
             .populate("studentId", "name")
             .lean()

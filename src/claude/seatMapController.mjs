@@ -10,7 +10,7 @@ import { getSeatMap } from "./seatMapService.mjs";
 async function getSeatMapForSlot(req, res) {
     try {
         const { libraryId } = req.params;
-        const { slotTemplateId, date } = req.query;
+        const { slotTemplateId, date, excludeStudentId } = req.query;
 
         if (!slotTemplateId) {
             return res.status(400).json({
@@ -27,7 +27,7 @@ async function getSeatMapForSlot(req, res) {
             });
         }
 
-        const seatMap = await getSeatMap(libraryId, slotTemplateId, targetDate);
+        const seatMap = await getSeatMap(libraryId, slotTemplateId, targetDate, excludeStudentId);
 
         return res.status(200).json({
             success: true,

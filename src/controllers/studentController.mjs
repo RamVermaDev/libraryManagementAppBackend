@@ -372,8 +372,8 @@ const addStudent = async (req, res) => {
 
         if (numericPaidAmount > 0) {
             if (paymentMode === "Both") {
-                const numericCash = Number(cashAmount) || 0;
-                const numericOnline = Number(onlineAmount) || 0;
+                let numericOnline = Math.min(Number(onlineAmount) || 0, numericPaidAmount);
+                let numericCash = Math.max(0, numericPaidAmount - numericOnline);
 
                 if (numericCash > 0) {
                     const [cashPay] = await paymentModel.create(
@@ -1860,8 +1860,8 @@ const renewStudent = async (req, res) => {
 
         if (numericPaidAmount > 0) {
             if (paymentMode === "Both") {
-                const numericCash = Number(cashAmount) || 0;
-                const numericOnline = Number(onlineAmount) || 0;
+                let numericOnline = Math.min(Number(onlineAmount) || 0, numericPaidAmount);
+                let numericCash = Math.max(0, numericPaidAmount - numericOnline);
 
                 if (numericCash > 0) {
                     const [cashPay] = await paymentModel.create(
@@ -2398,6 +2398,49 @@ const getStudentFeeRecords = async (req, res) => {
 
         const feeRecords = await feeRecordModel.find({ libraryId, studentId }).sort({ createdAt: -1 }).lean();
 
+        for (const record of feeRecords) {
+            const payments = await paymentModel.find({ feeRecord: record._id }).sort({ createdAt: 1 }).lean();
+            const creditPayments = payments.filter(p => p.tracker === 'credit');
+
+            let canEditPayment = true;
+            let blockReason = null;
+
+            if (creditPayments.length > 2) {
+                canEditPayment = false;
+                blockReason = "Cannot edit: Multiple payments exist for this admission.";
+            } else if (creditPayments.length === 2) {
+                const d1 = new Date(creditPayments[0].paymentDate || creditPayments[0].createdAt);
+                const d2 = new Date(creditPayments[1].paymentDate || creditPayments[1].createdAt);
+                const isSameDate = d1.getFullYear() === d2.getFullYear() &&
+                                   d1.getMonth() === d2.getMonth() &&
+                                   d1.getDate() === d2.getDate();
+                if (!isSameDate) {
+                    canEditPayment = false;
+                    blockReason = "Cannot edit: Payments were made on different dates.";
+                }
+            }
+
+            let totalCash = 0;
+            let totalOnline = 0;
+            for (const p of creditPayments) {
+                if (p.paymentMode === "Cash") totalCash += (p.amount || 0);
+                if (p.paymentMode === "Online") totalOnline += (p.amount || 0);
+            }
+
+            if (totalCash > 0 && totalOnline > 0) {
+                record.paymentMode = "Both";
+            } else if (totalOnline > 0) {
+                record.paymentMode = "Online";
+            } else {
+                record.paymentMode = "Cash";
+            }
+
+            record.canEditPayment = canEditPayment;
+            record.paymentBlockReason = blockReason;
+            record.cashAmount = totalCash;
+            record.onlineAmount = totalOnline;
+        }
+
         return res.status(200).json({
             success: true,
             message: 'Fee records fetched successfully',
@@ -2571,6 +2614,241 @@ const getFollowUpStudents = async (req, res) => {
     } catch (error) {
         console.error('GET FOLLOW UP STUDENTS ERROR:', error);
         return res.status(500).json({ success: false, message: 'Unable to load follow-up students' });
+    }
+};
+
+// ==========================================
+// EDIT STUDENT ADMISSION (Atomic Correction) [v1.0.2 - 2026-08-12]
+// ==========================================
+export const editStudentAdmission = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const {
+            seatId,
+            slotTemplateId,
+            startDate,
+            expireDate,
+            planDays,
+            amount,
+            discount,
+            paidAmount,
+            pendingAmount,
+            paymentMode,
+            note,
+        } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ success: false, message: 'Invalid IDs' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).session(session);
+        if (!library) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).session(session);
+        if (!student) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'Student not found' });
+        }
+
+        // Capture initial values to detect changes
+        const oldStartMs = student.currentStartDate ? new Date(student.currentStartDate).getTime() : 0;
+        const oldExpireMs = student.currentExpireDate ? new Date(student.currentExpireDate).getTime() : 0;
+        const oldSeatId = String(student.seatId || '');
+        const oldSlotTemplateId = String(student.slotTemplateId || '');
+
+        // 1. Update Student Financials & Dates & Seat/Slot
+        const numPaid = Number(paidAmount) >= 0 ? Number(paidAmount) : student.totalPaid;
+        const numPending = Number(pendingAmount) >= 0 ? Number(pendingAmount) : 0;
+        const numDiscount = Number(discount) >= 0 ? Number(discount) : (student.totalDiscount || 0);
+        const numPlanDays = Number(planDays) > 0 ? Number(planDays) : student.currentPlanDays;
+
+        student.totalPaid = numPaid;
+        student.totalPending = numPending;
+        student.totalDiscount = numDiscount;
+        student.currentPlanDays = numPlanDays;
+
+        if (startDate) {
+            const d = new Date(startDate);
+            if (!isNaN(d.getTime())) student.currentStartDate = d;
+        }
+        if (expireDate) {
+            const dateStr = String(expireDate).split('T')[0];
+            const parts = dateStr.split('-').map(Number);
+            if (parts.length === 3 && !parts.some(isNaN)) {
+                student.currentExpireDate = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999);
+            } else {
+                const d = new Date(expireDate);
+                if (!isNaN(d.getTime())) student.currentExpireDate = d;
+            }
+        }
+
+        if (slotTemplateId && mongoose.Types.ObjectId.isValid(slotTemplateId)) {
+            student.slotTemplateId = slotTemplateId;
+            const slotTpl = await slotTemplateModel.findById(slotTemplateId).session(session);
+            if (slotTpl) {
+                student.slotTiming = formatSlotTiming(slotTpl.startMinute, slotTpl.endMinute);
+            }
+        }
+
+        if (seatId !== undefined && seatId !== null) {
+            if (mongoose.Types.ObjectId.isValid(seatId)) {
+                student.seatId = seatId;
+            }
+        }
+
+        await student.save({ session });
+
+        // 2. Update Latest FeeRecord
+        const feeRecord = await feeRecordModel.findOne({ studentId, libraryId }).sort({ createdAt: -1 }).session(session);
+        if (feeRecord) {
+            if (startDate) feeRecord.startDate = new Date(startDate);
+            if (expireDate) feeRecord.expireDate = student.currentExpireDate;
+            if (planDays) feeRecord.planDays = numPlanDays;
+            if (amount !== undefined) feeRecord.amount = Number(amount);
+            feeRecord.discount = numDiscount;
+            feeRecord.paidAmount = numPaid;
+            feeRecord.pendingAmount = numPending;
+            feeRecord.finalAmount = (Number(amount) || feeRecord.amount) - numDiscount;
+            await feeRecord.save({ session });
+        }
+
+        // 3. Update Latest Payment Record(s)
+        if (feeRecord) {
+            const existingPayments = await paymentModel.find({ feeRecord: feeRecord._id, tracker: 'credit' }).session(session);
+
+            if (paymentMode === "Both") {
+                const reqBody = req.body;
+                let numOnline = Math.min(Number(reqBody.onlineAmount) || 0, numPaid);
+                let numCash = Math.max(0, numPaid - numOnline);
+
+                let cashPay = existingPayments.find(p => p.paymentMode === "Cash");
+                let onlinePay = existingPayments.find(p => p.paymentMode === "Online");
+
+                if (numCash > 0) {
+                    if (cashPay) {
+                        cashPay.amount = numCash;
+                        if (note !== undefined) cashPay.note = note;
+                        await cashPay.save({ session });
+                    } else {
+                        await paymentModel.create([{
+                            libraryId,
+                            student: studentId,
+                            feeRecord: feeRecord._id,
+                            amount: numCash,
+                            paymentMode: "Cash",
+                            tracker: "credit",
+                            note: note || null
+                        }], { session });
+                    }
+                } else if (cashPay) {
+                    await paymentModel.deleteOne({ _id: cashPay._id }).session(session);
+                }
+
+                if (numOnline > 0) {
+                    if (onlinePay) {
+                        onlinePay.amount = numOnline;
+                        if (note !== undefined) onlinePay.note = note;
+                        await onlinePay.save({ session });
+                    } else {
+                        await paymentModel.create([{
+                            libraryId,
+                            student: studentId,
+                            feeRecord: feeRecord._id,
+                            amount: numOnline,
+                            paymentMode: "Online",
+                            tracker: "credit",
+                            note: note || null
+                        }], { session });
+                    }
+                } else if (onlinePay) {
+                    await paymentModel.deleteOne({ _id: onlinePay._id }).session(session);
+                }
+            } else if (paymentMode === "Cash" || paymentMode === "Online") {
+                if (existingPayments.length > 0) {
+                    const primary = existingPayments[0];
+                    primary.amount = numPaid;
+                    primary.paymentMode = paymentMode;
+                    if (note !== undefined) primary.note = note;
+                    await primary.save({ session });
+
+                    for (let i = 1; i < existingPayments.length; i++) {
+                        await paymentModel.deleteOne({ _id: existingPayments[i]._id }).session(session);
+                    }
+                } else if (numPaid > 0) {
+                    await paymentModel.create([{
+                        libraryId,
+                        student: studentId,
+                        feeRecord: feeRecord._id,
+                        amount: numPaid,
+                        paymentMode: paymentMode,
+                        tracker: "credit",
+                        note: note || null
+                    }], { session });
+                }
+            }
+        }
+
+        // 4. Update Reservation ONLY if Seat, Slot, or Subscription Dates changed
+        const newStartMs = student.currentStartDate ? new Date(student.currentStartDate).getTime() : 0;
+        const newExpireMs = student.currentExpireDate ? new Date(student.currentExpireDate).getTime() : 0;
+        const newSeatId = String(student.seatId || '');
+        const newSlotTemplateId = String(student.slotTemplateId || '');
+
+        const seatChanged = newSeatId !== oldSeatId;
+        const slotChanged = newSlotTemplateId !== oldSlotTemplateId;
+        const datesChanged = (newStartMs !== oldStartMs) || (newExpireMs !== oldExpireMs);
+
+        if (seatChanged || slotChanged || datesChanged) {
+            const reservation = await reservationModel.findOne({ studentId, status: 'active' }).session(session);
+            if (reservation) {
+                if (slotChanged) {
+                    reservation.slotTemplateId = slotTemplateId;
+                    const slotTpl = await slotTemplateModel.findById(slotTemplateId).session(session);
+                    if (slotTpl) {
+                        reservation.startMinute = slotTpl.startMinute;
+                        reservation.endMinute = slotTpl.endMinute;
+                    }
+                }
+                if (seatChanged) {
+                    reservation.seatId = student.seatId;
+                }
+                if (datesChanged) {
+                    reservation.subscriptionStartDate = student.currentStartDate;
+                    reservation.subscriptionExpiryDate = student.currentExpireDate;
+                }
+                await reservation.save({ session });
+            }
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+
+        // Return populated student
+        const populatedStudent = await studentModel.findById(studentId)
+            .populate('seatId', 'label seatNumber')
+            .populate('slotTemplateId', 'name startMinute endMinute')
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Admission details updated successfully',
+            data: { student: attachSignedPhotoUrls([populatedStudent])[0] },
+        });
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error('EDIT ADMISSION ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to update admission details' });
     }
 };
 

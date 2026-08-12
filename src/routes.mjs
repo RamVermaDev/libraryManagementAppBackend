@@ -5,7 +5,7 @@ import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, 
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, editStudentAdmission } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -63,6 +63,7 @@ routes.patch('/api/:libraryId/students/:studentId/pause', authenticate, checkSub
 routes.patch('/api/:libraryId/students/:studentId/resume', authenticate, checkSubscription, resumeStudent)
 routes.patch('/api/:libraryId/students/:studentId/blacklist', authenticate, checkSubscription, blacklistStudent)
 routes.patch('/api/:libraryId/students/:studentId/unblock', authenticate, checkSubscription, unblockStudent)
+routes.patch('/api/:libraryId/students/:studentId/edit-admission', authenticate, checkSubscription, editStudentAdmission)
 routes.delete('/api/:libraryId/students/:studentId', authenticate, checkSubscription, deleteStudent)
 routes.get('/api/:libraryId/sudentsummary', authenticate, getStudentSummary)
 routes.get('/api/:libraryId/getstudents', authenticate, getStudents)

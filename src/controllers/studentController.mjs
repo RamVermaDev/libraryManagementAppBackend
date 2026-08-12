@@ -564,10 +564,11 @@ const getStudents = async (req, res) => {
             });
         }
 
-        // 6. FETCH STUDENTS
+        // 6. FETCH STUDENTS — exclude paused (they appear in Follow Up tab only)
         const students = await studentModel
             .find({
                 libraryId: libraryId,
+                status: { $ne: 'paused' },
             })
             .populate("seatId", "label seatNumber")
             .sort({
@@ -1522,7 +1523,7 @@ const refundStudent = async (req, res) => {
     try {
         const userId = req.user.id;
         const { libraryId, studentId } = req.params;
-        const { refundAmount, paymentMode, note } = req.body;
+        const { refundAmount, paymentMode, note, refundEndDate } = req.body;
 
         // --- VALIDATE IDs ---
         if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
@@ -1613,13 +1614,28 @@ const refundStudent = async (req, res) => {
 
         // --- 4. UPDATE STUDENT FINANCIALS ---
 
-        // Set expire date to today (1 second ago so it is immediately expired, but retains today's date)
-        const expiredToday = new Date(Date.now() - 1000);
+        // Set expire date to custom refundEndDate if provided, or default to yesterday
+        let effectiveExpireDate;
+        if (refundEndDate) {
+            const dateStr = String(refundEndDate).split('T')[0];
+            const parts = dateStr.split('-').map(Number);
+            if (parts.length === 3 && !parts.some(isNaN)) {
+                const [year, month, day] = parts;
+                effectiveExpireDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+            }
+        }
+
+        if (!effectiveExpireDate) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            yesterday.setHours(23, 59, 59, 999);
+            effectiveExpireDate = yesterday;
+        }
 
         student.totalPaid = Math.max(0, student.totalPaid - numericRefund);
         student.totalPending = 0;    // waived — reservation cancelled
         student.seatId = null;        // seat released
-        student.currentExpireDate = expiredToday; // mark as expired today
+        student.currentExpireDate = effectiveExpireDate; // mark as expired on chosen date
         await student.save({ session });
 
         await session.commitTransaction();
@@ -2393,7 +2409,172 @@ const getStudentFeeRecords = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords }
+// [v1.0.1 - 2026-08-12] GET PAUSED STUDENTS — Follow Up tab
+const getPausedStudents = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId } = req.params;
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+        const skip = (page - 1) * limit;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({ success: false, message: 'Invalid library ID' });
+        }
+
+        const library = await libraryModel
+            .findOne({ _id: libraryId, ownerId: userId })
+            .select('_id')
+            .lean();
+
+        if (!library) {
+            return res.status(403).json({ success: false, message: 'You do not have access to this library' });
+        }
+
+        const students = await studentModel
+            .find({ libraryId, status: 'paused' })
+            .populate('seatId', 'label seatNumber')
+            .sort({ pausedAt: -1, createdAt: -1, _id: -1 })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        const hasMore = students.length > limit;
+        if (hasMore) students.pop();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Paused students fetched successfully',
+            data: {
+                students: attachSignedPhotoUrls(students),
+                pagination: { page, limit, hasMore },
+            },
+        });
+    } catch (error) {
+        console.error('GET PAUSED STUDENTS ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to load paused students' });
+    }
+};
+
+// [v1.0.2 - 2026-08-12] SET FOLLOW UP
+const setStudentFollowUp = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+        const { note, followUpDate } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid ID' });
+        }
+
+        if (!followUpDate) {
+            return res.status(400).json({ success: false, message: 'Follow-up date is required' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id').lean();
+        if (!library) return res.status(403).json({ success: false, message: 'Access denied' });
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).populate('seatId', 'label seatNumber');
+        if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+
+        student.followUpNote = note?.trim() || null;
+        student.followUpDate = new Date(followUpDate);
+        student.followUpSetAt = new Date();
+        await student.save();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Follow-up saved',
+            data: { student: attachSignedPhotoUrls([student.toObject()])[0] },
+        });
+    } catch (error) {
+        console.error('SET FOLLOW UP ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to save follow-up' });
+    }
+};
+
+// [v1.0.2 - 2026-08-12] CLEAR FOLLOW UP
+const clearStudentFollowUp = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId, studentId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
+            return res.status(400).json({ success: false, message: 'Invalid ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id').lean();
+        if (!library) return res.status(403).json({ success: false, message: 'Access denied' });
+
+        const student = await studentModel.findOne({ _id: studentId, libraryId }).populate('seatId', 'label seatNumber');
+        if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+
+        student.followUpNote = null;
+        student.followUpDate = null;
+        student.followUpSetAt = null;
+        await student.save();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Follow-up cleared',
+            data: { student: attachSignedPhotoUrls([student.toObject()])[0] },
+        });
+    } catch (error) {
+        console.error('CLEAR FOLLOW UP ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to clear follow-up' });
+    }
+};
+
+// [v1.0.2 - 2026-08-12] GET FOLLOW UP STUDENTS (paused + expired with follow-up date)
+const getFollowUpStudents = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId } = req.params;
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+        const skip = (page - 1) * limit;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({ success: false, message: 'Invalid library ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id').lean();
+        if (!library) return res.status(403).json({ success: false, message: 'Access denied' });
+
+        const students = await studentModel
+            .find({
+                libraryId,
+                $or: [
+                    { status: 'paused' },
+                    { followUpDate: { $ne: null } },
+                ],
+            })
+            .populate('seatId', 'label seatNumber')
+            .sort({ status: -1, followUpDate: 1, pausedAt: -1, createdAt: -1 })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        const hasMore = students.length > limit;
+        if (hasMore) students.pop();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Follow-up students fetched successfully',
+            data: {
+                students: attachSignedPhotoUrls(students),
+                pagination: { page, limit, hasMore },
+            },
+        });
+    } catch (error) {
+        console.error('GET FOLLOW UP STUDENTS ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to load follow-up students' });
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords }
 
 
 

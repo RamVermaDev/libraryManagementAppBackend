@@ -88,6 +88,24 @@ const studentSchema = new mongoose.Schema(
             default: null,
         },
 
+        // FOLLOW UP — [v1.0.2 - 2026-08-12]
+        // Set when an expired student says they'll come back on a specific date
+        followUpNote: {
+            type: String,
+            default: null,
+        },
+
+        followUpDate: {
+            type: Date,
+            default: null,
+            index: true,
+        },
+
+        followUpSetAt: {
+            type: Date,
+            default: null,
+        },
+
         // MEMBERSHIP SUMMARY
         joiningDate: {
             type: Date,

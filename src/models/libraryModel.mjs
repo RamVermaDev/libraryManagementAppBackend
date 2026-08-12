@@ -110,6 +110,23 @@ const librarySchema = new mongoose.Schema({
 
     },
 
+    // Additional Fees Config
+
+    additionalFees: {
+        admissionFee: {
+            type: Number,
+            default: 0
+        },
+        lockerFee: {
+            type: Number,
+            default: 0
+        },
+        cardFee: {
+            type: Number,
+            default: 0
+        }
+    },
+
     // Soft Delete
 
     isDeleted: {

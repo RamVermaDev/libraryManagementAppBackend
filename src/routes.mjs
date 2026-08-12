@@ -3,7 +3,7 @@ import { appModeMiddleware } from './middleware/appModeMiddleware.mjs'
 import { checkSubscription } from './middleware/checkSubscription.mjs'
 import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword } from './controllers/userController.mjs'
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
-import { createLibrary, getOwnerLibraries, updateLibrary } from './controllers/libraryController.mjs'
+import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
 import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
@@ -51,6 +51,7 @@ routes.post('/api/subscription/webhook', handleRazorpayWebhook)
 routes.post('/api/createlibrary', authenticate, createLibrary)
 routes.get('/api/my-libraries', authenticate, getOwnerLibraries)
 routes.patch('/api/:libraryId/updatelibrary', authenticate, updateLibrary)
+routes.put('/api/:libraryId/additional-fees', authenticate, updateAdditionalFees)
 
 //Student related API
 routes.post('/api/addstudent', authenticate, checkSubscription, addStudent)

@@ -47,6 +47,24 @@ const feeRecordSchema = new mongoose.Schema(
             min: 0,
         },
 
+        admissionFee: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        cardFee: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        lockerFee: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
         discount: {
             type: Number,
             default: 0,
@@ -66,6 +84,12 @@ const feeRecordSchema = new mongoose.Schema(
         },
 
         pendingAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        refundAmount: {
             type: Number,
             default: 0,
             min: 0,

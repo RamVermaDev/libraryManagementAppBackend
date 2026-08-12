@@ -4,11 +4,22 @@ import { userModel } from "../models/userModel.mjs";
 import { seatModel } from "../models/seatModel.mjs";
 
 export const createLibrary = async (req, res) => {
-    const session = await mongoose.startSession();
+    // [v1.0.1 - 2026-08-12] Added standalone MongoDB fallback for transactions to prevent session hang timeouts.
+    let session = null;
+    let useTransaction = true;
 
     try {
+        session = await mongoose.startSession();
         session.startTransaction();
+    } catch (err) {
+        useTransaction = false;
+        if (session) {
+            try { session.endSession(); } catch (e) {}
+            session = null;
+        }
+    }
 
+    try {
         const ownerId = req.user._id;
 
         const {
@@ -24,13 +35,11 @@ export const createLibrary = async (req, res) => {
         const seatsCount = Number(totalSeats) > 0 ? Number(totalSeats) : 0;
 
         // Validate required fields
-        if (
-            !libraryName ||
-            !whatsappNumber ||
-            !city 
-        ) {
-            await session.abortTransaction();
-            session.endSession();
+        if (!libraryName || !whatsappNumber || !city) {
+            if (useTransaction && session) {
+                await session.abortTransaction();
+                session.endSession();
+            }
 
             return res.status(400).json({
                 success: false,
@@ -39,11 +48,14 @@ export const createLibrary = async (req, res) => {
         }
 
         // Check if owner exists
-        const owner = await userModel.findById(ownerId).session(session);
+        const ownerQuery = userModel.findById(ownerId);
+        const owner = useTransaction && session ? await ownerQuery.session(session) : await ownerQuery;
 
         if (!owner) {
-            await session.abortTransaction();
-            session.endSession();
+            if (useTransaction && session) {
+                await session.abortTransaction();
+                session.endSession();
+            }
 
             return res.status(404).json({
                 success: false,
@@ -70,9 +82,13 @@ export const createLibrary = async (req, res) => {
             },
         });
 
-        await library.save({ session });
+        if (useTransaction && session) {
+            await library.save({ session });
+        } else {
+            await library.save();
+        }
 
-        // Auto-generate seat documents inside transaction if totalSeats > 0
+        // Auto-generate seat documents if totalSeats > 0
         if (seatsCount > 0) {
             const seatDocs = [];
             const prefix = req.body.prefix || req.body.seatPrefix || 'A';
@@ -84,16 +100,23 @@ export const createLibrary = async (req, res) => {
                     status: "active",
                 });
             }
-            await seatModel.insertMany(seatDocs, { session });
+            if (useTransaction && session) {
+                await seatModel.insertMany(seatDocs, { session });
+            } else {
+                await seatModel.insertMany(seatDocs);
+            }
         }
 
         // Save library id into user's libraries array
         owner.libraries.push(library._id);
 
-        await owner.save({ session });
-
-        await session.commitTransaction();
-        session.endSession();
+        if (useTransaction && session) {
+            await owner.save({ session });
+            await session.commitTransaction();
+            session.endSession();
+        } else {
+            await owner.save();
+        }
 
         return res.status(201).json({
             success: true,
@@ -102,8 +125,12 @@ export const createLibrary = async (req, res) => {
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
+        if (useTransaction && session) {
+            try {
+                await session.abortTransaction();
+                session.endSession();
+            } catch (e) {}
+        }
 
         console.error("Create Library Error:", error);
 
@@ -201,6 +228,55 @@ export const updateLibrary = async (req, res) => {
     } catch (error) {
         console.error("Update Library Error:", error);
 
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error."
+        });
+    }
+};
+
+export const updateAdditionalFees = async (req, res) => {
+    try {
+        const { libraryId } = req.params;
+        const { admissionFee = 0, lockerFee = 0, cardFee = 0 } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library id."
+            });
+        }
+
+        const library = await libraryModel.findOne({
+            _id: libraryId,
+            ownerId: req.user._id,
+            isDeleted: false
+        });
+
+        if (!library) {
+            return res.status(404).json({
+                success: false,
+                message: "Library not found."
+            });
+        }
+
+        library.additionalFees = {
+            admissionFee: Number(admissionFee) || 0,
+            lockerFee: Number(lockerFee) || 0,
+            cardFee: Number(cardFee) || 0,
+        };
+
+        await library.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Additional fees updated successfully.",
+            additionalFees: library.additionalFees,
+            library,
+        });
+
+    } catch (error) {
+        console.error("Update Additional Fees Error:", error);
         return res.status(500).json({
             success: false,
             message: "Internal Server Error."

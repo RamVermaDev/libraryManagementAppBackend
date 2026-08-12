@@ -74,6 +74,7 @@ export async function updateStudentProfileService({
         }
     }
 
+    // [v1.0.1 - 2026-08-12] Populate seatId on profile update return object
     return studentModel.findOneAndUpdate(
         {
             _id: studentId,
@@ -86,5 +87,5 @@ export async function updateStudentProfileService({
             new: true,
             runValidators: true,
         }
-    );
+    ).populate("seatId", "label seatNumber");
 }

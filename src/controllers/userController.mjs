@@ -436,6 +436,8 @@ const verifyEmailOtp = async (req, res) => {
 
         await user.save();
 
+        // [v1.0.1 - 2026-08-12] Return complete createdAt & subscription dates on OTP verify
+        // to prevent mobile app from resetting trial status to expired (0 days remaining).
         return res.status(200).json({
             success: true,
             message: "Email verified successfully.",
@@ -444,7 +446,14 @@ const verifyEmailOtp = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 isEmailVerified: user.isEmailVerified,
-                libraries: user.libraries
+                libraries: user.libraries,
+                createdAt: user.createdAt,
+                subscription: {
+                    plan: user.subscription?.plan ?? 'trial',
+                    status: user.subscription?.status ?? 'trial',
+                    startAt: user.subscription?.startAt ?? null,
+                    endAt: user.subscription?.endAt ?? null,
+                }
             }
         });
 

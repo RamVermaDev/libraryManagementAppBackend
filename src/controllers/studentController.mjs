@@ -84,8 +84,13 @@ const addStudent = async (req, res) => {
             startDate,
             expireDate,
             amount,
+            admissionFee = 0,
+            cardFee = 0,
+            lockerFee = 0,
             discount = 0,
             paidAmount = 0,
+            cashAmount = 0,
+            onlineAmount = 0,
             paymentMode,
             notes,
         } = req.body;
@@ -348,6 +353,9 @@ const addStudent = async (req, res) => {
                     expireDate: parsedExpireDate,
 
                     amount: numericAmount,
+                    admissionFee: Number(admissionFee) || 0,
+                    cardFee: Number(cardFee) || 0,
+                    lockerFee: Number(lockerFee) || 0,
                     discount: numericDiscount,
                     finalAmount,
                     paidAmount: numericPaidAmount,
@@ -360,24 +368,70 @@ const addStudent = async (req, res) => {
         // 12. CREATE PAYMENT IF MONEY WAS PAID
 
         let payment = null;
+        let payments = [];
 
         if (numericPaidAmount > 0) {
-            const [createdPayment] = await paymentModel.create(
-                [
-                    {
-                        libraryId: libraryId,
-                        student: student._id,
-                        feeRecord: feeRecord._id,
+            if (paymentMode === "Both") {
+                const numericCash = Number(cashAmount) || 0;
+                const numericOnline = Number(onlineAmount) || 0;
 
-                        amount: numericPaidAmount,
-                        paymentMode,
-                        paymentDate: new Date(),
-                    },
-                ],
-                { session }
-            );
+                if (numericCash > 0) {
+                    const [cashPay] = await paymentModel.create(
+                        [
+                            {
+                                libraryId,
+                                student: student._id,
+                                feeRecord: feeRecord._id,
+                                amount: numericCash,
+                                paymentMode: "Cash",
+                                tracker: "credit",
+                                paymentDate: new Date(),
+                            },
+                        ],
+                        { session }
+                    );
+                    payments.push(cashPay);
+                }
 
-            payment = createdPayment;
+                if (numericOnline > 0) {
+                    const [onlinePay] = await paymentModel.create(
+                        [
+                            {
+                                libraryId,
+                                student: student._id,
+                                feeRecord: feeRecord._id,
+                                amount: numericOnline,
+                                paymentMode: "Online",
+                                tracker: "credit",
+                                paymentDate: new Date(),
+                            },
+                        ],
+                        { session }
+                    );
+                    payments.push(onlinePay);
+                }
+
+                payment = payments[0] || null;
+            } else {
+                const [createdPayment] = await paymentModel.create(
+                    [
+                        {
+                            libraryId: libraryId,
+                            student: student._id,
+                            feeRecord: feeRecord._id,
+
+                            amount: numericPaidAmount,
+                            paymentMode,
+                            tracker: "credit",
+                            paymentDate: new Date(),
+                        },
+                    ],
+                    { session }
+                );
+
+                payment = createdPayment;
+                payments = [createdPayment];
+            }
         }
 
         // 12b. CREATE RESERVATION - links this admission to the seat/slot
@@ -408,8 +462,12 @@ const addStudent = async (req, res) => {
         );
 
         // 13. COMMIT TRANSACTION
-
         await session.commitTransaction();
+
+        // [v1.0.1 - 2026-08-12] Populate seatId on newly created student before sending payload
+        if (student.seatId) {
+            await student.populate("seatId", "label seatNumber");
+        }
 
         return res.status(201).json({
             success: true,
@@ -419,6 +477,7 @@ const addStudent = async (req, res) => {
                 student: attachSignedPhotoUrl(student),
                 feeRecord,
                 payment,
+                payments,
                 reservation,
             },
         });
@@ -1272,7 +1331,7 @@ const clearStudentPending = async (req, res) => {
     try {
         const userId = req.user.id;
         const { libraryId, studentId } = req.params;
-        const { action, amount, paymentMode, note } = req.body;
+        const { action, amount, paymentMode, cashAmount, onlineAmount, note } = req.body;
 
         if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
             return res.status(400).json({
@@ -1290,10 +1349,10 @@ const clearStudentPending = async (req, res) => {
 
         const normalizedAction = action.toLowerCase();
 
-        if (normalizedAction === "paid" && (!paymentMode || !["Cash", "Online"].includes(paymentMode))) {
+        if (normalizedAction === "paid" && (!paymentMode || !["Cash", "Online", "Both"].includes(paymentMode))) {
             return res.status(400).json({
                 success: false,
-                message: "Valid payment mode ('Cash' or 'Online') is required when marking as paid",
+                message: "Valid payment mode ('Cash', 'Online', or 'Both') is required when marking as paid",
             });
         }
 
@@ -1345,6 +1404,7 @@ const clearStudentPending = async (req, res) => {
         }
 
         let payment = null;
+        let payments = [];
 
         if (normalizedAction === "paid") {
             student.totalPaid += clearAmount;
@@ -1356,22 +1416,68 @@ const clearStudentPending = async (req, res) => {
                 feeRecord.pendingAmount = Math.max(0, feeRecord.pendingAmount - clearAmount);
                 await feeRecord.save({ session });
 
-                const [createdPayment] = await paymentModel.create(
-                    [
-                        {
-                            libraryId,
-                            student: student._id,
-                            feeRecord: feeRecord._id,
-                            amount: clearAmount,
-                            paymentMode,
-                            tracker: "credit",
-                            note: note ? String(note).trim() : null,
-                            paymentDate: new Date(),
-                        },
-                    ],
-                    { session }
-                );
-                payment = createdPayment;
+                if (paymentMode === "Both") {
+                    const numericCash = Number(cashAmount) || 0;
+                    const numericOnline = Number(onlineAmount) || 0;
+
+                    if (numericCash > 0) {
+                        const [cashPay] = await paymentModel.create(
+                            [
+                                {
+                                    libraryId,
+                                    student: student._id,
+                                    feeRecord: feeRecord._id,
+                                    amount: numericCash,
+                                    paymentMode: "Cash",
+                                    tracker: "credit",
+                                    note: note ? String(note).trim() : null,
+                                    paymentDate: new Date(),
+                                },
+                            ],
+                            { session }
+                        );
+                        payments.push(cashPay);
+                    }
+
+                    if (numericOnline > 0) {
+                        const [onlinePay] = await paymentModel.create(
+                            [
+                                {
+                                    libraryId,
+                                    student: student._id,
+                                    feeRecord: feeRecord._id,
+                                    amount: numericOnline,
+                                    paymentMode: "Online",
+                                    tracker: "credit",
+                                    note: note ? String(note).trim() : null,
+                                    paymentDate: new Date(),
+                                },
+                            ],
+                            { session }
+                        );
+                        payments.push(onlinePay);
+                    }
+
+                    payment = payments[0] || null;
+                } else {
+                    const [createdPayment] = await paymentModel.create(
+                        [
+                            {
+                                libraryId,
+                                student: student._id,
+                                feeRecord: feeRecord._id,
+                                amount: clearAmount,
+                                paymentMode,
+                                tracker: "credit",
+                                note: note ? String(note).trim() : null,
+                                paymentDate: new Date(),
+                            },
+                        ],
+                        { session }
+                    );
+                    payment = createdPayment;
+                    payments = [createdPayment];
+                }
             }
         } else if (normalizedAction === "discount") {
             student.totalDiscount += clearAmount;
@@ -1393,6 +1499,7 @@ const clearStudentPending = async (req, res) => {
             data: {
                 student: attachSignedPhotoUrl(student),
                 payment,
+                payments,
             },
         });
     } catch (error) {
@@ -1481,6 +1588,7 @@ const refundStudent = async (req, res) => {
             .session(session);
 
         if (feeRecord) {
+            feeRecord.refundAmount = (feeRecord.refundAmount || 0) + numericRefund;
             feeRecord.paidAmount = Math.max(0, feeRecord.paidAmount - numericRefund);
             feeRecord.pendingAmount = 0; // reservation cancelled — nothing left to collect
             await feeRecord.save({ session });
@@ -1553,8 +1661,12 @@ const renewStudent = async (req, res) => {
             startDate,
             expireDate,
             amount,
+            cardFee = 0,
+            lockerFee = 0,
             discount = 0,
             paidAmount = 0,
+            cashAmount = 0,
+            onlineAmount = 0,
             paymentMode,
             notes,
         } = req.body;
@@ -1715,6 +1827,8 @@ const renewStudent = async (req, res) => {
                     startDate: parsedStartDate,
                     expireDate: parsedExpireDate,
                     amount: numericAmount,
+                    cardFee: Number(cardFee) || 0,
+                    lockerFee: Number(lockerFee) || 0,
                     discount: numericDiscount,
                     finalAmount,
                     paidAmount: numericPaidAmount,
@@ -1726,23 +1840,71 @@ const renewStudent = async (req, res) => {
 
         // --- 4. CREATE PAYMENT IF MONEY WAS PAID ---
         let payment = null;
+        let payments = [];
+
         if (numericPaidAmount > 0) {
-            const [createdPayment] = await paymentModel.create(
-                [
-                    {
-                        libraryId,
-                        student: student._id,
-                        feeRecord: feeRecord._id,
-                        amount: numericPaidAmount,
-                        paymentMode,
-                        paymentDate: new Date(),
-                        tracker: 'credit',
-                        note: notes?.trim() || null,
-                    },
-                ],
-                { session }
-            );
-            payment = createdPayment;
+            if (paymentMode === "Both") {
+                const numericCash = Number(cashAmount) || 0;
+                const numericOnline = Number(onlineAmount) || 0;
+
+                if (numericCash > 0) {
+                    const [cashPay] = await paymentModel.create(
+                        [
+                            {
+                                libraryId,
+                                student: student._id,
+                                feeRecord: feeRecord._id,
+                                amount: numericCash,
+                                paymentMode: "Cash",
+                                paymentDate: new Date(),
+                                tracker: 'credit',
+                                note: notes?.trim() || null,
+                            },
+                        ],
+                        { session }
+                    );
+                    payments.push(cashPay);
+                }
+
+                if (numericOnline > 0) {
+                    const [onlinePay] = await paymentModel.create(
+                        [
+                            {
+                                libraryId,
+                                student: student._id,
+                                feeRecord: feeRecord._id,
+                                amount: numericOnline,
+                                paymentMode: "Online",
+                                paymentDate: new Date(),
+                                tracker: 'credit',
+                                note: notes?.trim() || null,
+                            },
+                        ],
+                        { session }
+                    );
+                    payments.push(onlinePay);
+                }
+
+                payment = payments[0] || null;
+            } else {
+                const [createdPayment] = await paymentModel.create(
+                    [
+                        {
+                            libraryId,
+                            student: student._id,
+                            feeRecord: feeRecord._id,
+                            amount: numericPaidAmount,
+                            paymentMode,
+                            paymentDate: new Date(),
+                            tracker: 'credit',
+                            note: notes?.trim() || null,
+                        },
+                    ],
+                    { session }
+                );
+                payment = createdPayment;
+                payments = [createdPayment];
+            }
         }
 
         // --- 5. UPDATE STUDENT DOCUMENT ---
@@ -1768,6 +1930,11 @@ const renewStudent = async (req, res) => {
 
         await session.commitTransaction();
 
+        // [v1.0.1 - 2026-08-12] Populate seatId on updated student before sending payload
+        if (updatedStudent && updatedStudent.seatId) {
+            await updatedStudent.populate("seatId", "label seatNumber");
+        }
+
         return res.status(200).json({
             success: true,
             message: 'Admission renewed successfully',
@@ -1775,6 +1942,7 @@ const renewStudent = async (req, res) => {
                 student: attachSignedPhotoUrl(updatedStudent),
                 feeRecord,
                 payment,
+                payments,
                 reservation: newReservation,
             },
         });
@@ -1931,6 +2099,11 @@ const resumeStudent = async (req, res) => {
 
         await student.save({ session });
         await session.commitTransaction();
+
+        // [v1.0.1 - 2026-08-12] Populate seatId on resumed student before sending payload
+        if (student.seatId) {
+            await student.populate("seatId", "label seatNumber");
+        }
 
         return res.status(200).json({
             success: true,
@@ -2172,6 +2345,7 @@ const globalSearchStudents = async (req, res) => {
                 libraryId: libraryId,
                 $or: orConditions,
             })
+            .populate("seatId", "label seatNumber")
             .sort({ name: 1 })
             .limit(50)
             .lean();

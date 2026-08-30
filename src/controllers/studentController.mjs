@@ -11,13 +11,29 @@ import { updateStudentProfileService } from "../services/studentService.mjs";
 import cloudinary from "../../config/cloudinary.mjs";
 
 function startOfDay(dateInput) {
-    if (!dateInput) return new Date();
+    if (!dateInput) {
+        const now = new Date();
+        return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0));
+    }
+    const dateStr = String(dateInput).split('T')[0];
+    const parts = dateStr.split('-').map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0));
+    }
     const d = new Date(dateInput);
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
 }
 
 function endOfDay(dateInput) {
-    if (!dateInput) return new Date();
+    if (!dateInput) {
+        const now = new Date();
+        return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999));
+    }
+    const dateStr = String(dateInput).split('T')[0];
+    const parts = dateStr.split('-').map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999));
+    }
     const d = new Date(dateInput);
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
 }
@@ -654,10 +670,8 @@ const getActiveStudents = async (req, res) => {
             });
         }
 
-        // 6. GET START OF TODAY
-        const today = new Date();
-
-        today.setHours(0, 0, 0, 0);
+        // 6. GET START OF TODAY (UTC)
+        const today = startOfDay();
 
         // 7. FETCH ONLY ACTIVE STUDENTS
         const students = await studentModel
@@ -766,24 +780,16 @@ const getExpiredStudents = async (req, res) => {
             });
         }
 
-        // 7. GET START OF TODAY
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // 7. GET START OF TODAY (UTC)
+        const today = startOfDay();
 
-        // 8. CREATE EXPIRED DATE RANGE
-
-        // Example:
-        // Today = 8 July
-        // startDay = 1 → 7 July
-        // endDay = 3   → 5 July
-
+        // 8. CREATE EXPIRED DATE RANGE (UTC)
         const rangeStart = new Date(today);
-        rangeStart.setDate(rangeStart.getDate() - endDay);
-        rangeStart.setHours(0, 0, 0, 0);
+        rangeStart.setUTCDate(rangeStart.getUTCDate() - endDay);
 
         const rangeEnd = new Date(today);
-        rangeEnd.setDate(rangeEnd.getDate() - startDay);
-        rangeEnd.setHours(23, 59, 59, 999);
+        rangeEnd.setUTCDate(rangeEnd.getUTCDate() - startDay);
+        rangeEnd.setUTCHours(23, 59, 59, 999);
 
         // 9. FETCH EXPIRED STUDENTS
         const students = await studentModel
@@ -892,24 +898,17 @@ const getExpiringStudents = async (req, res) => {
             });
         }
 
-        // 7. GET START OF TODAY
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // 7. GET START OF TODAY (UTC)
+        const today = startOfDay();
 
-        // 8. CREATE EXPIRING DATE RANGE
-        //
-        // Example:
-        // Today = 8 July
-        // startDay = 1 → 9 July
-        // endDay = 3   → 11 July
-
+        // 8. CREATE EXPIRING DATE RANGE (UTC)
         const rangeStart = new Date(today);
-        rangeStart.setDate(rangeStart.getDate() + startDay);
-        rangeStart.setHours(0, 0, 0, 0);
+        const dayOffset = startDay === 1 ? 0 : startDay;
+        rangeStart.setUTCDate(rangeStart.getUTCDate() + dayOffset);
 
         const rangeEnd = new Date(today);
-        rangeEnd.setDate(rangeEnd.getDate() + endDay);
-        rangeEnd.setHours(23, 59, 59, 999);
+        rangeEnd.setUTCDate(rangeEnd.getUTCDate() + endDay);
+        rangeEnd.setUTCHours(23, 59, 59, 999);
 
         // 9. FETCH EXPIRING STUDENTS
         const students = await studentModel
@@ -1068,29 +1067,25 @@ const getStudentSummary = async (req, res) => {
             });
         }
 
-        // 5. CREATE TODAY'S START TIME
-        const today = new Date();
+        // 5. CREATE TODAY'S START TIME (UTC)
+        const today = startOfDay();
 
-        today.setHours(0, 0, 0, 0);
-
-        // 6. HELPER FUNCTION TO CREATE DATE BOUNDARIES
+        // 6. HELPER FUNCTION TO CREATE DATE BOUNDARIES (UTC)
         const addDays = (days) => {
             const date = new Date(today);
-
-            date.setDate(date.getDate() + days);
-
+            date.setUTCDate(date.getUTCDate() + days);
             return date;
         };
 
-        // FUTURE DATE BOUNDARIES
+        // FUTURE DATE BOUNDARIES (1-3, 4-6, 7-10)
         const day1 = addDays(1);
         const day4 = addDays(4);
-        const day8 = addDays(8);
+        const day7 = addDays(7);
         const day11 = addDays(11);
 
-        // PAST DATE BOUNDARIES
+        // PAST DATE BOUNDARIES (1-3, 4-6, 7-10)
         const dayMinus3 = addDays(-3);
-        const dayMinus7 = addDays(-7);
+        const dayMinus6 = addDays(-6);
         const dayMinus10 = addDays(-10);
 
         // 7. CONVERT LIBRARY ID TO OBJECT ID
@@ -1130,7 +1125,7 @@ const getStudentSummary = async (req, res) => {
                         },
                     },
 
-                    // EXPIRING IN 1–3 DAYS
+                    // EXPIRING IN 1–3 DAYS (Today + Days 1, 2, 3)
                     expiring1To3Days: {
                         $sum: {
                             $cond: [
@@ -1138,7 +1133,7 @@ const getStudentSummary = async (req, res) => {
                                     $and: [
                                         { $eq: ["$status", "active"] },
                                         { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", day1] },
+                                        { $gte: ["$currentExpireDate", today] },
                                         { $lt: ["$currentExpireDate", day4] },
                                     ],
                                 },
@@ -1148,7 +1143,7 @@ const getStudentSummary = async (req, res) => {
                         },
                     },
 
-                    // EXPIRING IN 4–7 DAYS
+                    // EXPIRING IN 4–6 DAYS (Days 4, 5, 6)
                     expiring4To7Days: {
                         $sum: {
                             $cond: [
@@ -1157,7 +1152,7 @@ const getStudentSummary = async (req, res) => {
                                         { $eq: ["$status", "active"] },
                                         { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", day4] },
-                                        { $lt: ["$currentExpireDate", day8] },
+                                        { $lt: ["$currentExpireDate", day7] },
                                     ],
                                 },
                                 1,
@@ -1166,7 +1161,7 @@ const getStudentSummary = async (req, res) => {
                         },
                     },
 
-                    // EXPIRING IN 8–10 DAYS
+                    // EXPIRING IN 7–10 DAYS (Days 7, 8, 9, 10)
                     expiring8To10Days: {
                         $sum: {
                             $cond: [
@@ -1174,7 +1169,7 @@ const getStudentSummary = async (req, res) => {
                                     $and: [
                                         { $eq: ["$status", "active"] },
                                         { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", day8] },
+                                        { $gte: ["$currentExpireDate", day7] },
                                         { $lt: ["$currentExpireDate", day11] },
                                     ],
                                 },
@@ -1184,7 +1179,7 @@ const getStudentSummary = async (req, res) => {
                         },
                     },
 
-                    // EXPIRED 1–3 DAYS AGO
+                    // EXPIRED 1–3 DAYS AGO (Days 1, 2, 3 ago)
                     expired1To3Days: {
                         $sum: {
                             $cond: [
@@ -1202,7 +1197,7 @@ const getStudentSummary = async (req, res) => {
                         },
                     },
 
-                    // EXPIRED 4–7 DAYS AGO
+                    // EXPIRED 4–6 DAYS AGO (Days 4, 5, 6 ago)
                     expired4To7Days: {
                         $sum: {
                             $cond: [
@@ -1210,7 +1205,7 @@ const getStudentSummary = async (req, res) => {
                                     $and: [
                                         { $ne: ["$status", "blacklisted"] },
                                         { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", dayMinus7] },
+                                        { $gte: ["$currentExpireDate", dayMinus6] },
                                         { $lt: ["$currentExpireDate", dayMinus3] },
                                     ],
                                 },
@@ -1220,7 +1215,7 @@ const getStudentSummary = async (req, res) => {
                         },
                     },
 
-                    // EXPIRED 8–10 DAYS AGO
+                    // EXPIRED 7–10 DAYS AGO (Days 7, 8, 9, 10 ago)
                     expired8To10Days: {
                         $sum: {
                             $cond: [
@@ -1229,7 +1224,7 @@ const getStudentSummary = async (req, res) => {
                                         { $ne: ["$status", "blacklisted"] },
                                         { $ne: ["$currentExpireDate", null] },
                                         { $gte: ["$currentExpireDate", dayMinus10] },
-                                        { $lt: ["$currentExpireDate", dayMinus7] },
+                                        { $lt: ["$currentExpireDate", dayMinus6] },
                                     ],
                                 },
                                 1,
@@ -1621,15 +1616,14 @@ const refundStudent = async (req, res) => {
             const parts = dateStr.split('-').map(Number);
             if (parts.length === 3 && !parts.some(isNaN)) {
                 const [year, month, day] = parts;
-                effectiveExpireDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+                effectiveExpireDate = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
             }
         }
 
         if (!effectiveExpireDate) {
             const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            yesterday.setHours(23, 59, 59, 999);
-            effectiveExpireDate = yesterday;
+            yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+            effectiveExpireDate = endOfDay(yesterday);
         }
 
         student.totalPaid = Math.max(0, student.totalPaid - numericRefund);

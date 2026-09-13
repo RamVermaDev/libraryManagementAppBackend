@@ -28,6 +28,12 @@ const studentSchema = new mongoose.Schema(
         },
 
         // PERSONAL DETAILS
+        studentId: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+
         name: {
             type: String,
             required: [true, "Student name is required"],
@@ -175,6 +181,15 @@ const studentSchema = new mongoose.Schema(
 studentSchema.index(
     { libraryId: 1, phone: 1 },
     { unique: true }
+);
+
+// Student ID unique per library, ignoring legacy null/empty records
+studentSchema.index(
+    { libraryId: 1, studentId: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { studentId: { $type: "string", $gt: "" } },
+    }
 );
 
 

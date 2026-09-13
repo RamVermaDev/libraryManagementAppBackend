@@ -90,6 +90,7 @@ const addStudent = async (req, res) => {
 
         const {
             libraryId,
+            studentId: customStudentId,
             slotTemplateId,
             seatId,
             name,
@@ -298,7 +299,7 @@ const addStudent = async (req, res) => {
 
         // 8. CHECK DUPLICATE STUDENT
 
-        //i willthink about it to check or no ---- im not sure
+        // Check if student with phone number already exists
         const existingStudent = await studentModel.findOne({
             libraryId: libraryId,
             phone: normalizedPhone,
@@ -313,6 +314,47 @@ const addStudent = async (req, res) => {
             });
         }
 
+        // Student ID Validation & Auto-Sequential Calculation
+        let finalStudentId = customStudentId ? String(customStudentId).trim() : null;
+
+        if (finalStudentId) {
+            if (/^\d+$/.test(finalStudentId)) {
+                finalStudentId = finalStudentId.padStart(3, "0");
+            }
+            const duplicateStudentId = await studentModel
+                .findOne({
+                    libraryId: libraryId,
+                    studentId: finalStudentId,
+                })
+                .select("_id")
+                .lean();
+
+            if (duplicateStudentId) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Student ID "${finalStudentId}" is already assigned to another student in this library`,
+                });
+            }
+        } else {
+            // Auto-sequential calculation from latest student with a studentId
+            const lastStudent = await studentModel
+                .findOne({
+                    libraryId: libraryId,
+                    studentId: { $exists: true, $ne: null, $ne: "" },
+                })
+                .sort({ createdAt: -1 })
+                .select("studentId")
+                .lean();
+
+            let nextNum = 1;
+            if (lastStudent && lastStudent.studentId) {
+                const lastNum = parseInt(String(lastStudent.studentId).replace(/\D/g, ""), 10);
+                if (!isNaN(lastNum)) {
+                    nextNum = lastNum + 1;
+                }
+            }
+            finalStudentId = String(nextNum).padStart(3, "0");
+        }
 
         // 9. START TRANSACTION
 
@@ -324,6 +366,7 @@ const addStudent = async (req, res) => {
             [
                 {
                     libraryId: libraryId,
+                    studentId: finalStudentId,
                     slotTemplateId: slotTemplateId,
                     slotTiming: formatSlotTiming(slotTemplate.startMinute, slotTemplate.endMinute),
                     seatId: seatId,
@@ -1276,6 +1319,7 @@ const updateStudentProfile = async (req, res) => {
             name: req.body.name,
             phone: req.body.phone,
             idProof: req.body.idProof,
+            customStudentId: req.body.studentId !== undefined ? req.body.studentId : req.body.customStudentId,
         });
 
         return res.status(200).json({
@@ -1296,7 +1340,7 @@ const updateStudentProfile = async (req, res) => {
         if (error?.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: "Student with this phone number already exists",
+                message: "A student with this ID or phone number already exists in this library",
             });
         }
 
@@ -1317,6 +1361,93 @@ const updateStudentProfile = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Unable to update student",
+        });
+    }
+};
+
+const getNextStudentId = async (req, res) => {
+    try {
+        const { libraryId } = req.params;
+        validateObjectId(libraryId, "Library Id");
+
+        // Single latest student query with a non-empty studentId
+        const lastStudent = await studentModel
+            .findOne({
+                libraryId,
+                studentId: { $exists: true, $ne: null, $ne: "" },
+            })
+            .sort({ createdAt: -1 })
+            .select("studentId")
+            .lean();
+
+        let nextNum = 1;
+        if (lastStudent && lastStudent.studentId) {
+            const lastNum = parseInt(String(lastStudent.studentId).replace(/\D/g, ""), 10);
+            if (!isNaN(lastNum)) {
+                nextNum = lastNum + 1;
+            }
+        }
+        const nextStudentId = String(nextNum).padStart(3, "0");
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                nextStudentId,
+            },
+        });
+    } catch (error) {
+        console.error("GET NEXT STUDENT ID ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to calculate next student ID",
+        });
+    }
+};
+
+const checkStudentIdAvailability = async (req, res) => {
+    try {
+        const { libraryId } = req.params;
+        const { studentId, excludeMongoId } = req.query;
+
+        validateObjectId(libraryId, "Library Id");
+
+        if (!studentId || !String(studentId).trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "Student ID is required",
+            });
+        }
+
+        const trimmedId = String(studentId).trim();
+        const query = {
+            libraryId,
+            studentId: trimmedId,
+        };
+
+        if (excludeMongoId && mongoose.Types.ObjectId.isValid(excludeMongoId)) {
+            query._id = { $ne: excludeMongoId };
+        }
+
+        const existing = await studentModel.findOne(query).select("_id name").lean();
+
+        if (existing) {
+            return res.status(200).json({
+                success: true,
+                available: false,
+                message: `Student ID "${trimmedId}" is already assigned to ${existing.name || "another student"}`,
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            available: true,
+            message: `Student ID "${trimmedId}" is available`,
+        });
+    } catch (error) {
+        console.error("CHECK STUDENT ID AVAILABILITY ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to check student ID availability",
         });
     }
 };
@@ -2614,7 +2745,7 @@ const getFollowUpStudents = async (req, res) => {
 // ==========================================
 // EDIT STUDENT ADMISSION (Atomic Correction) [v1.0.2 - 2026-08-12]
 // ==========================================
-export const editStudentAdmission = async (req, res) => {
+const editStudentAdmission = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
@@ -2846,7 +2977,7 @@ export const editStudentAdmission = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords }
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, getNextStudentId, checkStudentIdAvailability, editStudentAdmission }
 
 
 

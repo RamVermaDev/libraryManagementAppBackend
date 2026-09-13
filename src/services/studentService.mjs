@@ -11,6 +11,7 @@ export async function updateStudentProfileService({
     name,
     phone,
     idProof,
+    customStudentId,
 }) {
     validateObjectId(libraryId, "Library Id");
     validateObjectId(studentId, "Student Id");
@@ -33,6 +34,28 @@ export async function updateStudentProfileService({
 
     if (idProof !== undefined) {
         setFields.idProof = idProof === null ? null : (String(idProof).trim() || null);
+    }
+
+    if (customStudentId !== undefined) {
+        let trimmedId = customStudentId === null ? null : (String(customStudentId).trim() || null);
+        if (trimmedId) {
+            if (/^\d+$/.test(trimmedId)) {
+                trimmedId = trimmedId.padStart(3, "0");
+            }
+            const duplicateStudentId = await studentModel
+                .findOne({
+                    libraryId,
+                    studentId: trimmedId,
+                    _id: { $ne: studentId },
+                })
+                .select("_id")
+                .lean();
+
+            if (duplicateStudentId) {
+                throw new AppError(`Student ID "${trimmedId}" is already assigned to another student`, 409);
+            }
+        }
+        setFields.studentId = trimmedId;
     }
 
     const library = await libraryModel

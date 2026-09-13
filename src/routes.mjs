@@ -5,7 +5,7 @@ import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, 
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, editStudentAdmission } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, editStudentAdmission, getNextStudentId, checkStudentIdAvailability } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -76,6 +76,8 @@ routes.get('/api/:libraryId/getfollowupstudents', authenticate, getFollowUpStude
 routes.patch('/api/:libraryId/students/:studentId/follow-up', authenticate, setStudentFollowUp) // [v1.0.2 - 2026-08-12]
 routes.patch('/api/:libraryId/students/:studentId/follow-up/clear', authenticate, clearStudentFollowUp) // [v1.0.2 - 2026-08-12]
 routes.get('/api/:libraryId/students/search', authenticate, globalSearchStudents)
+routes.get('/api/:libraryId/students/next-id', authenticate, getNextStudentId)
+routes.get('/api/:libraryId/students/check-id', authenticate, checkStudentIdAvailability)
 routes.get('/api/:libraryId/students/:studentId/feerecords', authenticate, getStudentFeeRecords)
 
 //API related to TASK

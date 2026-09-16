@@ -5,6 +5,7 @@ import { paymentModel } from "../models/payementModel.mjs";
 import { libraryModel } from "../models/libraryModel.mjs";
 import { reservationModel } from "../claude/ReservationModel.mjs";
 import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
+import { bookIssueModel } from "../models/bookIssueModel.mjs";
 import { validateObjectId } from "../helper/validatorHelper.mjs";
 import { updateStudentProfileService } from "../services/studentService.mjs";
 
@@ -95,6 +96,10 @@ const addStudent = async (req, res) => {
             seatId,
             name,
             phone,
+            guardianName,
+            guardianPhone,
+            dob,
+            address,
             idProof,
             photoPublicId,
             currentPlanDays,
@@ -297,34 +302,26 @@ const addStudent = async (req, res) => {
             });
         }
 
-        // 8. CHECK DUPLICATE STUDENT
-
-        // Check if student with phone number already exists
-        const existingStudent = await studentModel.findOne({
-            libraryId: libraryId,
-            phone: normalizedPhone,
-        })
-            .select("_id")
-            .lean();
-
-        if (existingStudent) {
-            return res.status(409).json({
-                success: false,
-                message: "Student with this phone number already exists",
-            });
-        }
-
-        // Student ID Validation & Auto-Sequential Calculation
+        // 8. STUDENT ID VALIDATION & AUTO-SEQUENTIAL CALCULATION
         let finalStudentId = customStudentId ? String(customStudentId).trim() : null;
 
         if (finalStudentId) {
+            let searchIds = [finalStudentId];
             if (/^\d+$/.test(finalStudentId)) {
-                finalStudentId = finalStudentId.padStart(3, "0");
+                const num = parseInt(finalStudentId, 10);
+                searchIds = [
+                    String(num),
+                    String(num).padStart(2, "0"),
+                    String(num).padStart(3, "0"),
+                    String(num).padStart(4, "0"),
+                    finalStudentId,
+                ];
+                finalStudentId = String(num).padStart(3, "0");
             }
             const duplicateStudentId = await studentModel
                 .findOne({
                     libraryId: libraryId,
-                    studentId: finalStudentId,
+                    studentId: { $in: searchIds },
                 })
                 .select("_id")
                 .lean();
@@ -336,13 +333,14 @@ const addStudent = async (req, res) => {
                 });
             }
         } else {
-            // Auto-sequential calculation from latest student with a studentId
+            // Auto-sequential calculation using numeric index collation
             const lastStudent = await studentModel
                 .findOne({
                     libraryId: libraryId,
                     studentId: { $exists: true, $ne: null, $ne: "" },
                 })
-                .sort({ createdAt: -1 })
+                .sort({ studentId: -1 })
+                .collation({ locale: "en_US", numericOrdering: true })
                 .select("studentId")
                 .lean();
 
@@ -354,6 +352,28 @@ const addStudent = async (req, res) => {
                 }
             }
             finalStudentId = String(nextNum).padStart(3, "0");
+        }
+
+        let normalizedGuardianPhone = null;
+        if (guardianPhone !== undefined && guardianPhone !== null && String(guardianPhone).trim() !== "") {
+            normalizedGuardianPhone = String(guardianPhone).trim();
+            if (!/^[6-9]\d{9}$/.test(normalizedGuardianPhone)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Enter a valid Indian phone number for guardian",
+                });
+            }
+        }
+
+        let parsedDob = null;
+        if (dob !== undefined && dob !== null && String(dob).trim() !== "") {
+            parsedDob = new Date(dob);
+            if (Number.isNaN(parsedDob.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid Date of Birth",
+                });
+            }
         }
 
         // 9. START TRANSACTION
@@ -373,6 +393,11 @@ const addStudent = async (req, res) => {
 
                     name: normalizedName,
                     phone: normalizedPhone,
+
+                    guardianName: guardianName?.trim() || null,
+                    guardianPhone: normalizedGuardianPhone,
+                    dob: parsedDob,
+                    address: address?.trim() || null,
 
                     idProof: idProof?.trim() || null,
                     photoPublicId: photoPublicId?.trim() || "",
@@ -549,11 +574,11 @@ const addStudent = async (req, res) => {
             await session.abortTransaction();
         }
 
-        // Duplicate phone race condition
+        // Duplicate key race condition
         if (error?.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: "Student with this phone number already exists",
+                message: "A student with this Student ID already exists in this library",
             });
         }
 
@@ -1134,149 +1159,166 @@ const getStudentSummary = async (req, res) => {
         // 7. CONVERT LIBRARY ID TO OBJECT ID
         const libraryObjectId = new mongoose.Types.ObjectId(libraryId);
 
-        // 8. CALCULATE ALL STUDENT COUNTS IN ONE DATABASE QUERY
-        const [summary] = await studentModel.aggregate([
-            {
-                $match: {
-                    libraryId: libraryObjectId,
-                },
-            },
+        // Indian Standard Time (UTC+5:30) today's month & day for birthday check
+        const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+        const currentMonth = nowIST.getMonth() + 1;
+        const currentDay = nowIST.getDate();
 
-            {
-                $group: {
-                    _id: null,
-
-                    // TOTAL PENDING DUE AMOUNT ACROSS ALL STUDENTS
-                    totalPendingAmount: {
-                        $sum: { $ifNull: ["$totalPending", 0] },
-                    },
-
-                    // ALL ACTIVE STUDENTS
-                    active: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $eq: ["$status", "active"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", today] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-
-                    // EXPIRING IN 1–3 DAYS (Today + Days 1, 2, 3)
-                    expiring1To3Days: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $eq: ["$status", "active"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", today] },
-                                        { $lt: ["$currentExpireDate", day4] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-
-                    // EXPIRING IN 4–6 DAYS (Days 4, 5, 6)
-                    expiring4To7Days: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $eq: ["$status", "active"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", day4] },
-                                        { $lt: ["$currentExpireDate", day7] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-
-                    // EXPIRING IN 7–10 DAYS (Days 7, 8, 9, 10)
-                    expiring8To10Days: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $eq: ["$status", "active"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", day7] },
-                                        { $lt: ["$currentExpireDate", day11] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-
-                    // EXPIRED 1–3 DAYS AGO (Days 1, 2, 3 ago)
-                    expired1To3Days: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ["$status", "blacklisted"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", dayMinus3] },
-                                        { $lt: ["$currentExpireDate", today] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-
-                    // EXPIRED 4–6 DAYS AGO (Days 4, 5, 6 ago)
-                    expired4To7Days: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ["$status", "blacklisted"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", dayMinus6] },
-                                        { $lt: ["$currentExpireDate", dayMinus3] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
-                    },
-
-                    // EXPIRED 7–10 DAYS AGO (Days 7, 8, 9, 10 ago)
-                    expired8To10Days: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ["$status", "blacklisted"] },
-                                        { $ne: ["$currentExpireDate", null] },
-                                        { $gte: ["$currentExpireDate", dayMinus10] },
-                                        { $lt: ["$currentExpireDate", dayMinus6] },
-                                    ],
-                                },
-                                1,
-                                0,
-                            ],
-                        },
+        // 8. CALCULATE ALL STUDENT COUNTS AND CHECK TODAY BIRTHDAY (EARLY EXIT)
+        const [[summary], hasBirthdayStudent] = await Promise.all([
+            studentModel.aggregate([
+                {
+                    $match: {
+                        libraryId: libraryObjectId,
                     },
                 },
-            },
+
+                {
+                    $group: {
+                        _id: null,
+
+                        // TOTAL PENDING DUE AMOUNT ACROSS ALL STUDENTS
+                        totalPendingAmount: {
+                            $sum: { $ifNull: ["$totalPending", 0] },
+                        },
+
+                        // ALL ACTIVE STUDENTS
+                        active: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $eq: ["$status", "active"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", today] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+
+                        // EXPIRING IN 1–3 DAYS (Today + Days 1, 2, 3)
+                        expiring1To3Days: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $eq: ["$status", "active"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", today] },
+                                            { $lt: ["$currentExpireDate", day4] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+
+                        // EXPIRING IN 4–6 DAYS (Days 4, 5, 6)
+                        expiring4To7Days: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $eq: ["$status", "active"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", day4] },
+                                            { $lt: ["$currentExpireDate", day7] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+
+                        // EXPIRING IN 7–10 DAYS (Days 7, 8, 9, 10)
+                        expiring8To10Days: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $eq: ["$status", "active"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", day7] },
+                                            { $lt: ["$currentExpireDate", day11] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+
+                        // EXPIRED 1–3 DAYS AGO (Days 1, 2, 3 ago)
+                        expired1To3Days: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $ne: ["$status", "blacklisted"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", dayMinus3] },
+                                            { $lt: ["$currentExpireDate", today] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+
+                        // EXPIRED 4–6 DAYS AGO (Days 4, 5, 6 ago)
+                        expired4To7Days: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $ne: ["$status", "blacklisted"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", dayMinus6] },
+                                            { $lt: ["$currentExpireDate", dayMinus3] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+
+                        // EXPIRED 7–10 DAYS AGO (Days 7, 8, 9, 10 ago)
+                        expired8To10Days: {
+                            $sum: {
+                                $cond: [
+                                    {
+                                        $and: [
+                                            { $ne: ["$status", "blacklisted"] },
+                                            { $ne: ["$currentExpireDate", null] },
+                                            { $gte: ["$currentExpireDate", dayMinus10] },
+                                            { $lt: ["$currentExpireDate", dayMinus6] },
+                                        ],
+                                    },
+                                    1,
+                                    0,
+                                ],
+                            },
+                        },
+                    },
+                },
+            ]),
+            studentModel.findOne({
+                libraryId: libraryObjectId,
+                dob: { $ne: null },
+                $expr: {
+                    $and: [
+                        { $eq: [{ $month: { date: "$dob", timezone: "Asia/Kolkata" } }, currentMonth] },
+                        { $eq: [{ $dayOfMonth: { date: "$dob", timezone: "Asia/Kolkata" } }, currentDay] },
+                    ],
+                },
+            }).select("_id").lean(),
         ]);
 
         // 9. SEND RESPONSE
@@ -1285,6 +1327,7 @@ const getStudentSummary = async (req, res) => {
             message: "Student summary fetched successfully",
             data: {
                 active: summary?.active ?? 0,
+                hasTodayBirthday: Boolean(hasBirthdayStudent),
                 totalPendingAmount: summary?.totalPendingAmount ?? 0,
 
                 expiring: {
@@ -1320,6 +1363,10 @@ const updateStudentProfile = async (req, res) => {
             phone: req.body.phone,
             idProof: req.body.idProof,
             customStudentId: req.body.studentId !== undefined ? req.body.studentId : req.body.customStudentId,
+            guardianName: req.body.guardianName,
+            guardianPhone: req.body.guardianPhone,
+            dob: req.body.dob,
+            address: req.body.address,
         });
 
         return res.status(200).json({
@@ -1370,13 +1417,14 @@ const getNextStudentId = async (req, res) => {
         const { libraryId } = req.params;
         validateObjectId(libraryId, "Library Id");
 
-        // Single latest student query with a non-empty studentId
+        // Single highest student query using numeric index collation
         const lastStudent = await studentModel
             .findOne({
                 libraryId,
                 studentId: { $exists: true, $ne: null, $ne: "" },
             })
-            .sort({ createdAt: -1 })
+            .sort({ studentId: -1 })
+            .collation({ locale: "en_US", numericOrdering: true })
             .select("studentId")
             .lean();
 
@@ -1419,21 +1467,34 @@ const checkStudentIdAvailability = async (req, res) => {
         }
 
         const trimmedId = String(studentId).trim();
+        let searchIds = [trimmedId];
+        if (/^\d+$/.test(trimmedId)) {
+            const num = parseInt(trimmedId, 10);
+            searchIds = [
+                String(num),
+                String(num).padStart(2, "0"),
+                String(num).padStart(3, "0"),
+                String(num).padStart(4, "0"),
+                trimmedId,
+            ];
+        }
+
         const query = {
             libraryId,
-            studentId: trimmedId,
+            studentId: { $in: searchIds },
         };
 
         if (excludeMongoId && mongoose.Types.ObjectId.isValid(excludeMongoId)) {
             query._id = { $ne: excludeMongoId };
         }
 
-        const existing = await studentModel.findOne(query).select("_id name").lean();
+        const existing = await studentModel.findOne(query).select("_id name studentId").lean();
 
         if (existing) {
             return res.status(200).json({
                 success: true,
                 available: false,
+                assignedTo: existing.name || "another student",
                 message: `Student ID "${trimmedId}" is already assigned to ${existing.name || "another student"}`,
             });
         }
@@ -2481,6 +2542,21 @@ const globalSearchStudents = async (req, res) => {
             orConditions.push({ phone: { $regex: query, $options: "i" } });
         }
 
+        const trimmedQuery = query.trim();
+        if (/^\d+$/.test(trimmedQuery)) {
+            const numVal = parseInt(trimmedQuery, 10);
+            const searchIds = [
+                trimmedQuery,
+                String(numVal),
+                String(numVal).padStart(2, "0"),
+                String(numVal).padStart(3, "0"),
+                String(numVal).padStart(4, "0"),
+            ];
+            orConditions.push({ studentId: { $in: searchIds } });
+        } else if (trimmedQuery.length > 0) {
+            orConditions.push({ studentId: { $regex: trimmedQuery, $options: "i" } });
+        }
+
         const students = await studentModel
             .find({
                 libraryId: libraryId,
@@ -2977,7 +3053,134 @@ const editStudentAdmission = async (req, res) => {
     }
 };
 
-export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, getNextStudentId, checkStudentIdAvailability, editStudentAdmission }
+/**
+ * GET TODAY'S BIRTHDAY STUDENTS
+ * Returns students whose date of birth (month and day) is TODAY (IST)
+ */
+const getTodayBirthdayStudents = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId } = req.params;
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+        const skip = (page - 1) * limit;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({ success: false, message: 'Invalid library ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id').lean();
+        if (!library) return res.status(403).json({ success: false, message: 'Access denied' });
+
+        // Calculate today's day and month in Indian Standard Time (UTC+5:30)
+        const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+        const currentMonth = nowIST.getMonth() + 1; // 1-12
+        const currentDay = nowIST.getDate();        // 1-31
+
+        const students = await studentModel
+            .find({
+                libraryId,
+                dob: { $ne: null },
+                $expr: {
+                    $and: [
+                        { $eq: [{ $month: { date: "$dob", timezone: "Asia/Kolkata" } }, currentMonth] },
+                        { $eq: [{ $dayOfMonth: { date: "$dob", timezone: "Asia/Kolkata" } }, currentDay] },
+                    ],
+                },
+            })
+            .populate('seatId', 'label seatNumber')
+            .sort({ name: 1 })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        const hasMore = students.length > limit;
+        if (hasMore) students.pop();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Birthday students fetched successfully',
+            data: {
+                students: attachSignedPhotoUrls(students),
+                pagination: { page, limit, hasMore },
+            },
+        });
+    } catch (error) {
+        console.error('GET TODAY BIRTHDAY STUDENTS ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to load birthday students' });
+    }
+};
+
+/**
+ * GET BOOK ISSUED STUDENTS
+ * Returns students who currently have unreturned books (status: 'issued')
+ * with attached book information.
+ */
+const getBookIssuedStudents = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { libraryId } = req.params;
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+        const skip = (page - 1) * limit;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({ success: false, message: 'Invalid library ID' });
+        }
+
+        const library = await libraryModel.findOne({ _id: libraryId, ownerId: userId }).select('_id').lean();
+        if (!library) return res.status(403).json({ success: false, message: 'Access denied' });
+
+        const activeIssues = await bookIssueModel
+            .find({
+                libraryId,
+                status: 'issued',
+            })
+            .populate({
+                path: 'studentId',
+                populate: { path: 'seatId', select: 'label seatNumber' },
+            })
+            .populate('bookId', 'name category copies availableCopies rentPrice')
+            .sort({ issueDate: -1 })
+            .skip(skip)
+            .limit(limit + 1)
+            .lean();
+
+        const hasMore = activeIssues.length > limit;
+        if (hasMore) activeIssues.pop();
+
+        // Transform each issue into a student record with book metadata attached
+        const studentList = activeIssues
+            .filter(issue => issue.studentId != null)
+            .map(issue => {
+                const student = issue.studentId;
+                return {
+                    ...student,
+                    bookIssueId: issue._id,
+                    issuedBookName: issue.bookId?.name || 'Unknown Book',
+                    bookIssueDate: issue.issueDate,
+                    bookDueDate: issue.dueDate,
+                    bookRentPrice: issue.rentPrice,
+                };
+            });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Book issued students fetched successfully',
+            data: {
+                students: attachSignedPhotoUrls(studentList),
+                pagination: { page, limit, hasMore },
+            },
+        });
+    } catch (error) {
+        console.error('GET BOOK ISSUED STUDENTS ERROR:', error);
+        return res.status(500).json({ success: false, message: 'Unable to load book issued students' });
+    }
+};
+
+export { addStudent, getStudents, getStudentSummary, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, getTodayBirthdayStudents, getBookIssuedStudents, setStudentFollowUp, clearStudentFollowUp, updateStudentProfile, clearStudentPending, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, getNextStudentId, checkStudentIdAvailability, editStudentAdmission }
 
 
 

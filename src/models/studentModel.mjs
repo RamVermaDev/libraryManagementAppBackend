@@ -55,6 +55,29 @@ const studentSchema = new mongoose.Schema(
             default: null,
         },
 
+        guardianName: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+
+        guardianPhone: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+
+        dob: {
+            type: Date,
+            default: null,
+        },
+
+        address: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+
         idProof: {
             type: String,
             trim: true,
@@ -177,11 +200,8 @@ const studentSchema = new mongoose.Schema(
 
 
 
-// Same phone cannot be added twice in one library
-studentSchema.index(
-    { libraryId: 1, phone: 1 },
-    { unique: true }
-);
+// Index on libraryId and phone for fast search (non-unique to allow shared phone numbers)
+studentSchema.index({ libraryId: 1, phone: 1 });
 
 // Student ID unique per library, ignoring legacy null/empty records
 studentSchema.index(

@@ -3,9 +3,9 @@ import { appModeMiddleware } from './middleware/appModeMiddleware.mjs'
 import { checkSubscription } from './middleware/checkSubscription.mjs'
 import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword } from './controllers/userController.mjs'
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
-import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees } from './controllers/libraryController.mjs'
+import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees, updateAdmissionFields } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
-import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, editStudentAdmission, getNextStudentId, checkStudentIdAvailability } from './controllers/studentController.mjs'
+import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, getTodayBirthdayStudents, getBookIssuedStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, editStudentAdmission, getNextStudentId, checkStudentIdAvailability } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
@@ -18,6 +18,7 @@ import { getSeatMapForSlot } from './claude/seatMapController.mjs'
 import { upload, excelUpload } from './middleware/upload.mjs'
 import { deleteImage, uploadImage } from './controllers/uploadController.mjs'
 import { bulkImportStudents, clearLibraryData, downloadSampleTemplate } from './controllers/bulkImportController.mjs'
+import { addBook, getBooks, updateBook, deleteBook, issueBook, returnBook, getBookIssues, getStudentBookIssues } from './controllers/bookController.mjs'
 
 
 const routes = express.Router()
@@ -52,6 +53,7 @@ routes.post('/api/createlibrary', authenticate, createLibrary)
 routes.get('/api/my-libraries', authenticate, getOwnerLibraries)
 routes.patch('/api/:libraryId/updatelibrary', authenticate, updateLibrary)
 routes.put('/api/:libraryId/additional-fees', authenticate, updateAdditionalFees)
+routes.put('/api/:libraryId/admission-fields', authenticate, updateAdmissionFields)
 
 //Student related API
 routes.post('/api/addstudent', authenticate, checkSubscription, addStudent)
@@ -73,6 +75,8 @@ routes.get('/api/:libraryId/getexpiringstudents', authenticate, getExpiringStude
 routes.get('/api/:libraryId/getpendingstudents', authenticate, getPendingStudents)
 routes.get('/api/:libraryId/getpausedstudents', authenticate, getPausedStudents)
 routes.get('/api/:libraryId/getfollowupstudents', authenticate, getFollowUpStudents) // [v1.0.2 - 2026-08-12]
+routes.get('/api/:libraryId/getbirthdaystudents', authenticate, getTodayBirthdayStudents)
+routes.get('/api/:libraryId/getbookissuedstudents', authenticate, getBookIssuedStudents)
 routes.patch('/api/:libraryId/students/:studentId/follow-up', authenticate, setStudentFollowUp) // [v1.0.2 - 2026-08-12]
 routes.patch('/api/:libraryId/students/:studentId/follow-up/clear', authenticate, clearStudentFollowUp) // [v1.0.2 - 2026-08-12]
 routes.get('/api/:libraryId/students/search', authenticate, globalSearchStudents)
@@ -134,5 +138,15 @@ routes.delete("/image/delete", authenticate, deleteImage);
 routes.get("/api/:libraryId/download-student-template", downloadSampleTemplate);
 routes.post("/api/:libraryId/bulk-import-students", excelUpload.single("file"), bulkImportStudents);
 routes.delete("/api/:libraryId/clear-library-data", authenticate, clearLibraryData);
+
+//API related to BOOKS & LENDING
+routes.post("/api/:libraryId/books", authenticate, checkSubscription, addBook);
+routes.get("/api/:libraryId/books", authenticate, getBooks);
+routes.put("/api/:libraryId/books/:bookId", authenticate, checkSubscription, updateBook);
+routes.delete("/api/:libraryId/books/:bookId", authenticate, checkSubscription, deleteBook);
+routes.post("/api/:libraryId/books/issue", authenticate, checkSubscription, issueBook);
+routes.post("/api/:libraryId/books/return/:issueId", authenticate, checkSubscription, returnBook);
+routes.get("/api/:libraryId/books/issues", authenticate, getBookIssues);
+routes.get("/api/:libraryId/students/:studentId/books", authenticate, getStudentBookIssues);
 
 export default routes;

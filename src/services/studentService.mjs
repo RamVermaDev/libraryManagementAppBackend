@@ -12,6 +12,10 @@ export async function updateStudentProfileService({
     phone,
     idProof,
     customStudentId,
+    guardianName,
+    guardianPhone,
+    dob,
+    address,
 }) {
     validateObjectId(libraryId, "Library Id");
     validateObjectId(studentId, "Student Id");
@@ -36,16 +40,53 @@ export async function updateStudentProfileService({
         setFields.idProof = idProof === null ? null : (String(idProof).trim() || null);
     }
 
+    if (guardianName !== undefined) {
+        setFields.guardianName = guardianName === null ? null : (String(guardianName).trim() || null);
+    }
+
+    if (guardianPhone !== undefined) {
+        const trimmedGPhone = guardianPhone === null ? null : (String(guardianPhone).trim() || null);
+        if (trimmedGPhone && !INDIAN_PHONE_REGEX.test(trimmedGPhone)) {
+            throw new AppError("Enter a valid Indian phone number for guardian", 400);
+        }
+        setFields.guardianPhone = trimmedGPhone;
+    }
+
+    if (dob !== undefined) {
+        if (dob === null || dob === "") {
+            setFields.dob = null;
+        } else {
+            const parsedDob = new Date(dob);
+            if (Number.isNaN(parsedDob.getTime())) {
+                throw new AppError("Invalid Date of Birth", 400);
+            }
+            setFields.dob = parsedDob;
+        }
+    }
+
+    if (address !== undefined) {
+        setFields.address = address === null ? null : (String(address).trim() || null);
+    }
+
     if (customStudentId !== undefined) {
         let trimmedId = customStudentId === null ? null : (String(customStudentId).trim() || null);
         if (trimmedId) {
+            let searchIds = [trimmedId];
             if (/^\d+$/.test(trimmedId)) {
-                trimmedId = trimmedId.padStart(3, "0");
+                const num = parseInt(trimmedId, 10);
+                searchIds = [
+                    String(num),
+                    String(num).padStart(2, "0"),
+                    String(num).padStart(3, "0"),
+                    String(num).padStart(4, "0"),
+                    trimmedId,
+                ];
+                trimmedId = String(num).padStart(3, "0");
             }
             const duplicateStudentId = await studentModel
                 .findOne({
                     libraryId,
-                    studentId: trimmedId,
+                    studentId: { $in: searchIds },
                     _id: { $ne: studentId },
                 })
                 .select("_id")
@@ -80,21 +121,6 @@ export async function updateStudentProfileService({
 
     if (!student) {
         throw new AppError("Student not found", 404);
-    }
-
-    if (student.phone !== normalizedPhone) {
-        const duplicateStudent = await studentModel
-            .findOne({
-                libraryId,
-                phone: normalizedPhone,
-                _id: { $ne: studentId },
-            })
-            .select("_id")
-            .lean();
-
-        if (duplicateStudent) {
-            throw new AppError("Student with this phone number already exists", 409);
-        }
     }
 
     // [v1.0.1 - 2026-08-12] Populate seatId on profile update return object

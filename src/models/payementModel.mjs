@@ -21,7 +21,8 @@ const paymentSchema = new mongoose.Schema(
         feeRecord: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "FeeRecord",
-            required: true,
+            required: false,
+            default: null,
             index: true,
         },
 

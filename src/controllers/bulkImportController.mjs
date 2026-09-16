@@ -5,6 +5,8 @@ import { seatModel } from "../models/seatModel.mjs";
 import { paymentModel } from "../models/payementModel.mjs";
 import { feeRecordModel } from "../models/feeRecordModel.mjs";
 import { expenseModel } from "../models/expenseModel.mjs";
+import { taskModel } from "../models/taskModel.mjs";
+import { bookIssueModel } from "../models/bookIssueModel.mjs";
 import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
 import { reservationModel } from "../claude/ReservationModel.mjs";
 
@@ -24,8 +26,45 @@ const formatMinutesToAmPm = (minutes) => {
 };
 
 /**
+ * Helper to safely parse dates from Excel rows (supports Date, serial number, or ISO string)
+ */
+const parseExcelDate = (val) => {
+    if (!val) return null;
+    if (val instanceof Date && !isNaN(val.getTime())) return val;
+    if (typeof val === "number") {
+        const parsed = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const str = String(val).trim();
+    if (!str) return null;
+    const parsed = new Date(str);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+/**
+ * Helper to normalize gender strings
+ */
+const parseGender = (val) => {
+    if (!val) return null;
+    const str = String(val).trim().toLowerCase();
+    if (str === "male" || str === "m") return "Male";
+    if (str === "female" || str === "f") return "Female";
+    if (str === "other" || str === "o") return "Other";
+    return null;
+};
+
+/**
+ * Helper to clean guardian phone numbers
+ */
+const parseGuardianPhone = (val) => {
+    if (!val) return null;
+    let digits = String(val).replaceAll(/\D/g, "");
+    if (digits.length > 10) digits = digits.slice(-10);
+    return digits.length === 10 ? digits : null;
+};
+
+/**
  * Serves / downloads pre-formatted sample Excel template (.xlsx)
- * Columns: Student Name, Phone Number, Expire Date, Slot Timing
  */
 export const downloadSampleTemplate = async (req, res) => {
     try {
@@ -33,14 +72,30 @@ export const downloadSampleTemplate = async (req, res) => {
             {
                 "Student Name": "Rahul Sharma",
                 "Phone Number": "9876543210",
+                "Student ID": "001",
+                "Gender": "Male",
+                "Date of Birth (YYYY-MM-DD)": "2002-05-15",
+                "Joining Date (YYYY-MM-DD)": "2026-01-10",
                 "Expire Date (YYYY-MM-DD)": "2026-08-30",
-                "Slot Timing": "06:00 AM - 12:00 PM"
+                "Slot Timing": "06:00 AM - 12:00 PM",
+                "Guardian Name": "Suresh Sharma",
+                "Guardian Phone": "9811223344",
+                "Address": "H.No 12, Civil Lines, Delhi",
+                "ID Proof": "1234-5678-9012"
             },
             {
                 "Student Name": "Priya Singh",
                 "Phone Number": "9812345678",
+                "Student ID": "002",
+                "Gender": "Female",
+                "Date of Birth (YYYY-MM-DD)": "2003-08-22",
+                "Joining Date (YYYY-MM-DD)": "2026-02-01",
                 "Expire Date (YYYY-MM-DD)": "2026-07-28",
-                "Slot Timing": "02:00 PM - 08:00 PM"
+                "Slot Timing": "02:00 PM - 08:00 PM",
+                "Guardian Name": "Rajendra Singh",
+                "Guardian Phone": "9822334455",
+                "Address": "Flat 402, Green Park, Jaipur",
+                "ID Proof": "2345-6789-0123"
             }
         ];
 
@@ -48,8 +103,16 @@ export const downloadSampleTemplate = async (req, res) => {
         worksheet["!cols"] = [
             { wch: 22 }, // Student Name
             { wch: 18 }, // Phone Number
-            { wch: 25 }, // Expire Date
-            { wch: 25 }  // Slot Timing
+            { wch: 14 }, // Student ID
+            { wch: 12 }, // Gender
+            { wch: 26 }, // Date of Birth
+            { wch: 26 }, // Joining Date
+            { wch: 26 }, // Expire Date
+            { wch: 25 }, // Slot Timing
+            { wch: 22 }, // Guardian Name
+            { wch: 18 }, // Guardian Phone
+            { wch: 32 }, // Address
+            { wch: 22 }  // ID Proof
         ];
 
         const workbook = XLSX.utils.book_new();
@@ -105,11 +168,10 @@ export const bulkImportStudents = async (req, res) => {
 
         const studentsToInsert = [];
         let skippedCount = 0;
-        const now = new Date();
 
         for (const row of rows) {
             const name = (row["Student Name"] || row["Name"] || "").toString().trim();
-            let phone = (row["Phone Number"] || row["Phone"] || "").toString().replaceAll(/\D/g, "");
+            let phone = (row["Phone Number"] || row["Phone"] || row["Mobile"] || "").toString().replaceAll(/\D/g, "");
             if (phone.length > 10) {
                 phone = phone.slice(-10);
             }
@@ -119,18 +181,43 @@ export const bulkImportStudents = async (req, res) => {
                 continue;
             }
 
-            const expireDateStr = row["Expire Date (YYYY-MM-DD)"] || row["Expire Date"] || row["ExpireDate"];
-            const startDate = new Date();
-            let expireDate;
+            // Student ID / Roll No
+            const rawStudentId = (row["Student ID"] || row["Roll No"] || row["StudentId"] || row["RollNo"] || row["ID"] || "").toString().trim();
+            const studentId = rawStudentId.length > 0 ? rawStudentId : null;
 
-            if (expireDateStr) {
-                expireDate = new Date(expireDateStr);
-                if (isNaN(expireDate.getTime())) {
-                    expireDate = new Date(startDate.getTime() + 30 * 86400000);
-                }
-            } else {
-                expireDate = new Date(startDate.getTime() + 30 * 86400000);
-            }
+            // Gender
+            const gender = parseGender(
+                row["Gender"] || row["Sex"]
+            );
+
+            // DOB
+            const dob = parseExcelDate(
+                row["Date of Birth (YYYY-MM-DD)"] || row["Date of Birth"] || row["DOB"] || row["Birth Date"]
+            );
+
+            // Guardian Name & Phone
+            const guardianName = (row["Guardian Name"] || row["Father Name"] || row["Parent Name"] || row["Father's Name"] || "").toString().trim() || null;
+            const guardianPhone = parseGuardianPhone(
+                row["Guardian Phone"] || row["Father Phone"] || row["Parent Phone"] || row["Guardian Mobile"]
+            );
+
+            // Address
+            const address = (row["Address"] || row["Full Address"] || row["Location"] || "").toString().trim() || null;
+
+            // ID Proof
+            const idProof = (row["ID Proof"] || row["Aadhaar"] || row["Aadhar"] || row["Aadhaar Number"] || row["Govt ID"] || "").toString().trim() || null;
+
+            // Joining / Start Date
+            const parsedJoiningDate = parseExcelDate(
+                row["Joining Date (YYYY-MM-DD)"] || row["Joining Date"] || row["Start Date"] || row["Admission Date"]
+            );
+            const startDate = parsedJoiningDate || new Date();
+
+            // Expire Date
+            const parsedExpireDate = parseExcelDate(
+                row["Expire Date (YYYY-MM-DD)"] || row["Expire Date"] || row["ExpireDate"] || row["End Date"]
+            );
+            const expireDate = parsedExpireDate || new Date(startDate.getTime() + 30 * 86400000);
 
             // Calculate plan days between start and expire date
             const diffTime = Math.abs(expireDate - startDate);
@@ -142,15 +229,20 @@ export const bulkImportStudents = async (req, res) => {
 
             studentsToInsert.push({
                 libraryId,
+                studentId: studentId,
                 slotTemplateId: defaultSlot._id,
                 slotTiming: slotTiming,
                 seatId: null, // Unassigned physical seat initially
                 name,
                 phone,
-                gender: null,
-                idProof: null,
+                gender,
+                guardianName,
+                guardianPhone,
+                dob,
+                address,
+                idProof,
                 photoPublicId: "",
-                status: expireDate >= now ? "active" : "active",
+                status: "active",
                 joiningDate: startDate,
                 currentPlanDays: planDays,
                 currentStartDate: startDate,
@@ -201,6 +293,8 @@ export const clearLibraryData = async (req, res) => {
             await expenseModel.deleteMany({ libraryId }, { session });
             await reservationModel.deleteMany({ libraryId }, { session });
             await slotTemplateModel.deleteMany({ libraryId }, { session });
+            await taskModel.deleteMany({ libraryId }, { session });
+            await bookIssueModel.deleteMany({ libraryId }, { session });
         });
 
         return res.status(200).json({
@@ -217,6 +311,8 @@ export const clearLibraryData = async (req, res) => {
             await expenseModel.deleteMany({ libraryId });
             await reservationModel.deleteMany({ libraryId });
             await slotTemplateModel.deleteMany({ libraryId });
+            await taskModel.deleteMany({ libraryId });
+            await bookIssueModel.deleteMany({ libraryId });
 
             return res.status(200).json({
                 success: true,

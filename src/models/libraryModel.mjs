@@ -127,6 +127,31 @@ const librarySchema = new mongoose.Schema({
         }
     },
 
+    // Admission Form Fields Config
+
+    admissionFields: {
+        guardianName: {
+            type: Boolean,
+            default: false
+        },
+        guardianPhone: {
+            type: Boolean,
+            default: false
+        },
+        dob: {
+            type: Boolean,
+            default: false
+        },
+        address: {
+            type: Boolean,
+            default: false
+        },
+        idProof: {
+            type: Boolean,
+            default: true
+        }
+    },
+
     // Soft Delete
 
     isDeleted: {

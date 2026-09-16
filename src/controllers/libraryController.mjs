@@ -283,3 +283,60 @@ export const updateAdditionalFees = async (req, res) => {
         });
     }
 };
+
+export const updateAdmissionFields = async (req, res) => {
+    try {
+        const { libraryId } = req.params;
+        const {
+            guardianName = false,
+            guardianPhone = false,
+            dob = false,
+            address = false,
+            idProof = true,
+        } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(libraryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid library id."
+            });
+        }
+
+        const library = await libraryModel.findOne({
+            _id: libraryId,
+            ownerId: req.user._id,
+            isDeleted: false
+        });
+
+        if (!library) {
+            return res.status(404).json({
+                success: false,
+                message: "Library not found."
+            });
+        }
+
+        library.admissionFields = {
+            guardianName: Boolean(guardianName),
+            guardianPhone: Boolean(guardianPhone),
+            dob: Boolean(dob),
+            address: Boolean(address),
+            idProof: Boolean(idProof),
+        };
+
+        await library.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Admission fields updated successfully.",
+            admissionFields: library.admissionFields,
+            library,
+        });
+
+    } catch (error) {
+        console.error("Update Admission Fields Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error."
+        });
+    }
+};

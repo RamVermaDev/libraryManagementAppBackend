@@ -17,7 +17,7 @@ import { cancelReservation, editReservation, renewReservation, createReservation
 import { getSeatMapForSlot } from './claude/seatMapController.mjs'
 import { upload, excelUpload } from './middleware/upload.mjs'
 import { deleteImage, uploadImage } from './controllers/uploadController.mjs'
-import { bulkImportStudents, clearLibraryData, downloadSampleTemplate } from './controllers/bulkImportController.mjs'
+import { bulkImportStudents, clearLibraryData, downloadSampleTemplate, emailSampleTemplate } from './controllers/bulkImportController.mjs'
 import { addBook, getBooks, updateBook, deleteBook, issueBook, returnBook, getBookIssues, getStudentBookIssues } from './controllers/bookController.mjs'
 
 
@@ -136,6 +136,7 @@ routes.delete("/image/delete", authenticate, deleteImage);
 
 //API related to BULK EXCEL IMPORT & TEMPLATE
 routes.get("/api/:libraryId/download-student-template", downloadSampleTemplate);
+routes.post("/api/:libraryId/email-student-template", authenticate, emailSampleTemplate);
 routes.post("/api/:libraryId/bulk-import-students", excelUpload.single("file"), bulkImportStudents);
 routes.delete("/api/:libraryId/clear-library-data", authenticate, clearLibraryData);
 

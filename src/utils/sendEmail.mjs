@@ -51,11 +51,26 @@ const transporter = nodemailer.createTransport({
 // };
 
 
-const sendEmail = async ({ to, subject, text, html }) => {
+const sendEmail = async ({ to, recipientName, subject, text, html, attachments }) => {
     try {
         console.log("Sending email via Brevo HTTP API to:", to);
         const plainText = text || (html ? html.replace(/<[^>]*>?/gm, '') : subject) || "Library Notification";
         const htmlBody = html || text || subject;
+
+        const payload = {
+            sender: { 
+                name: "LibraryDesk", 
+                email: "librarydesksupport@gmail.com" 
+            },
+            to: [{ email: to, ...(recipientName ? { name: recipientName } : {}) }],
+            subject: subject,
+            textContent: plainText,
+            htmlContent: htmlBody,
+        };
+
+        if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+            payload.attachment = attachments;
+        }
 
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
             method: "POST",
@@ -64,16 +79,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
                 "content-type": "application/json",
                 "api-key": SMTP_PASS,
             },
-            body: JSON.stringify({
-                sender: { 
-                    name: "LibraryDesk", 
-                    email: "librarydesksupport@gmail.com" 
-                },
-                to: [{ email: to }],
-                subject: subject,
-                textContent: plainText,
-                htmlContent: htmlBody,
-            }),
+            body: JSON.stringify(payload),
         });
         const data = await response.json();
         if (!response.ok) {

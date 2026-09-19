@@ -5,8 +5,13 @@ import cors from 'cors'
 
 import { PORT, MONGODB_URI } from './config.mjs'
 import { uploadRoute } from './src/routes/uploadRoute.mjs'
+import { studyTempoRoutes } from './src/studytempo/studyTempoRoutes.mjs'
+import { initFirebaseAdmin } from './src/utils/firebaseAdmin.mjs'
 
 const app = express()
+
+// Initialize Firebase Admin for push notifications
+initFirebaseAdmin();
 
 app.use(cors({
   origin: true,
@@ -29,6 +34,7 @@ app.use(express.json({
 
 app.use('/', routes)
 app.use("/api/upload", uploadRoute);
+app.use("/api/studytempo", studyTempoRoutes);
 
 // Global JSON Error Handler
 // app.use((err, req, res, next) => {

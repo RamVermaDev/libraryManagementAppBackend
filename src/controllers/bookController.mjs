@@ -4,6 +4,7 @@ import { bookIssueModel } from "../models/bookIssueModel.mjs";
 import { studentModel } from "../models/studentModel.mjs";
 import { libraryModel } from "../models/libraryModel.mjs";
 import { paymentModel } from "../models/payementModel.mjs";
+import { sendPushNotificationToStudent, sendRoleNotification } from "../services/pushNotificationService.mjs";
 
 /**
  * Add a new book to library inventory
@@ -269,6 +270,44 @@ export const issueBook = async (req, res) => {
             .populate("studentId", "name phone studentId seatId")
             .lean();
 
+        // Send instant push notification to student phone
+        const library = await libraryModel.findById(libraryId).select("libraryName").lean();
+        const libName = library?.libraryName || "Library";
+        const dueStr = parsedDueDate ? parsedDueDate.toISOString().split("T")[0] : "No Due Date";
+        console.log(`[PushNotification] Triggering book issue alert for student ${studentId} from ${libName}`);
+        sendPushNotificationToStudent({
+            studentId,
+            title: `📖 ${libName} • Book Issued`,
+            body: `"${book.name}" has been issued to you. Due date: ${dueStr}.`,
+            data: {
+                type: "BOOK_ISSUED",
+                bookName: book.name,
+                dueDate: dueStr,
+                issueId: issue._id.toString(),
+            },
+        }).then((res) => {
+            console.log("[PushNotification] Book issue FCM result:", res);
+        }).catch((err) => console.error("[FCM Book Issue Notification Error]:", err));
+
+        // Non-blocking notification to Owner if book issued by staff/reception
+        if (req.appMode && req.appMode !== "admin") {
+            const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
+            sendRoleNotification({
+                libraryId,
+                targetRole: "admin",
+                performedByRole: req.appMode,
+                category: "BOOK_ISSUE",
+                title: "Book Issued",
+                message: `${staffLabel} issued "${book.name}" to ${student.name}.`,
+                data: {
+                    bookId: book._id.toString(),
+                    bookName: book.name,
+                    studentId: student._id.toString(),
+                    studentName: student.name,
+                },
+            }).catch((err) => console.error("[RoleNotification] Book issue notify error:", err));
+        }
+
         return res.status(201).json({
             success: true,
             message: "Book issued successfully",
@@ -324,6 +363,21 @@ export const returnBook = async (req, res) => {
             .populate("bookId", "name category copies availableCopies rentPrice")
             .populate("studentId", "name phone studentId seatId")
             .lean();
+
+        // Send instant push notification to student phone
+        const library = await libraryModel.findById(libraryId).select("libraryName").lean();
+        const libName = library?.libraryName || "Library";
+        const bookName = book?.name || "Book";
+        sendPushNotificationToStudent({
+            studentId: issue.studentId,
+            title: `✅ ${libName} • Book Returned`,
+            body: `"${bookName}" has been marked returned. Thank you!`,
+            data: {
+                type: "BOOK_RETURNED",
+                bookName,
+                issueId: issue._id.toString(),
+            },
+        }).catch((err) => console.error("[FCM Book Return Notification Error]:", err));
 
         return res.status(200).json({
             success: true,

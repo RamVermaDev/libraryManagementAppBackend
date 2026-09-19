@@ -1,7 +1,7 @@
 import express from 'express'
 import { appModeMiddleware } from './middleware/appModeMiddleware.mjs'
 import { checkSubscription } from './middleware/checkSubscription.mjs'
-import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword } from './controllers/userController.mjs'
+import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword, registerDeviceToken } from './controllers/userController.mjs'
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees, updateAdmissionFields } from './controllers/libraryController.mjs'
 import { authenticate } from './auth/authorization.mjs'
@@ -19,6 +19,8 @@ import { upload, excelUpload } from './middleware/upload.mjs'
 import { deleteImage, uploadImage } from './controllers/uploadController.mjs'
 import { bulkImportStudents, clearLibraryData, downloadSampleTemplate, emailSampleTemplate } from './controllers/bulkImportController.mjs'
 import { addBook, getBooks, updateBook, deleteBook, issueBook, returnBook, getBookIssues, getStudentBookIssues } from './controllers/bookController.mjs'
+import { createNotice, getLibraryNotices, deleteNotice, getRoleAlerts, markAlertAsRead, markAllAlertsAsRead } from './controllers/noticeController.mjs'
+
 
 
 const routes = express.Router()
@@ -42,6 +44,7 @@ routes.post('/api/otp-verify', authenticate, verifyEmailOtp)
 routes.post('/api/send-admin-otp', authenticate, sendAdminModeOtp)
 routes.post('/api/verify-admin-otp', authenticate, verifyAdminModeOtp)
 routes.get('/api/verify-token', authenticate, getCurrentUser)
+routes.post('/api/users/device-token', authenticate, registerDeviceToken)
 routes.get('/api/subscription/status', authenticate, getSubscriptionStatus)
 routes.post('/api/subscription/create-order', authenticate, createSubscriptionOrder)
 routes.post('/api/subscription/verify-payment', authenticate, verifySubscriptionPayment)
@@ -150,4 +153,15 @@ routes.post("/api/:libraryId/books/return/:issueId", authenticate, checkSubscrip
 routes.get("/api/:libraryId/books/issues", authenticate, getBookIssues);
 routes.get("/api/:libraryId/students/:studentId/books", authenticate, getStudentBookIssues);
 
+//API related to NOTICES & ANNOUNCEMENTS
+routes.post("/api/:libraryId/notices", authenticate, checkSubscription, createNotice);
+routes.get("/api/:libraryId/notices", authenticate, getLibraryNotices);
+routes.delete("/api/:libraryId/notices/:noticeId", authenticate, checkSubscription, deleteNotice);
+
+//API related to ROLE NOTIFICATIONS & ALERTS
+routes.get("/api/:libraryId/alerts", authenticate, getRoleAlerts);
+routes.patch("/api/:libraryId/alerts/read-all", authenticate, markAllAlertsAsRead);
+routes.patch("/api/:libraryId/alerts/:alertId/read", authenticate, markAlertAsRead);
+
 export default routes;
+

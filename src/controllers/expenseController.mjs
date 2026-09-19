@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { libraryModel } from "../models/libraryModel.mjs";
 import { expenseModel } from "../models/expenseModel.mjs";
+import { sendRoleNotification } from "../services/pushNotificationService.mjs";
 
 const addExpense = async (req, res) => {
   try {
@@ -89,6 +90,25 @@ const addExpense = async (req, res) => {
       description: cleanDescription,
       addedBy: req.appMode === 'reception' ? 'reception' : 'admin',
     });
+
+    // Non-blocking notification to Owner if expense added by staff/reception
+    if (req.appMode && req.appMode !== "admin") {
+      const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
+      sendRoleNotification({
+        libraryId: library._id,
+        targetRole: "admin",
+        performedByRole: req.appMode,
+        category: "EXPENSE",
+        title: "New Expense Added",
+        message: `${staffLabel} added expense "${cleanTitle}" of ₹${parsedAmount}.`,
+        data: {
+          expenseId: expense._id.toString(),
+          title: cleanTitle,
+          amount: String(parsedAmount),
+          category: cleanCategory,
+        },
+      }).catch((err) => console.error("[RoleNotification] Expense notify error:", err));
+    }
 
     return res.status(201).json({
       success: true,

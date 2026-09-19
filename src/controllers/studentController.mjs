@@ -8,6 +8,7 @@ import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
 import { bookIssueModel } from "../models/bookIssueModel.mjs";
 import { validateObjectId } from "../helper/validatorHelper.mjs";
 import { updateStudentProfileService } from "../services/studentService.mjs";
+import { sendPushNotificationToStudent, sendRoleNotification } from "../services/pushNotificationService.mjs";
 
 import cloudinary from "../../config/cloudinary.mjs";
 
@@ -547,6 +548,24 @@ const addStudent = async (req, res) => {
 
         // 13. COMMIT TRANSACTION
         await session.commitTransaction();
+
+        // Non-blocking notification to Owner if admission performed by staff/reception
+        if (req.appMode && req.appMode !== "admin") {
+            const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
+            sendRoleNotification({
+                libraryId,
+                targetRole: "admin",
+                performedByRole: req.appMode,
+                category: "ADMISSION",
+                title: "New Student Admission",
+                message: `${staffLabel} admitted ${student.name}${finalStudentId ? ` (ID: ${finalStudentId})` : ""}. Paid: ₹${numericPaidAmount}`,
+                data: {
+                    studentId: student._id.toString(),
+                    studentName: student.name,
+                    amount: String(numericPaidAmount),
+                },
+            }).catch((err) => console.error("[RoleNotification] Admission notify error:", err));
+        }
 
         // [v1.0.1 - 2026-08-12] Populate seatId on newly created student before sending payload
         if (student.seatId) {
@@ -1681,6 +1700,26 @@ const clearStudentPending = async (req, res) => {
         await student.save({ session });
         await session.commitTransaction();
 
+        // Send instant push notification to student phone
+        if (normalizedAction === "paid" || normalizedAction === "payment") {
+            const library = await libraryModel.findById(libraryId).select("libraryName").lean();
+            const libName = library?.libraryName || "Library";
+            console.log(`[PushNotification] Triggering payment receipt alert for student ${student.name} (${student._id})`);
+            sendPushNotificationToStudent({
+                studentId: student._id,
+                title: `🧾 ${libName} • Payment Received`,
+                body: `Payment of ₹${clearAmount} received. Remaining dues: ₹${student.totalPending || 0}.`,
+                data: {
+                    type: "PAYMENT_RECEIPT",
+                    studentId: student._id.toString(),
+                    amount: clearAmount,
+                    remainingDues: student.totalPending,
+                },
+            }).then((res) => {
+                console.log("[PushNotification] FCM send result:", res);
+            }).catch((err) => console.error("[FCM Payment Notification Error]:", err));
+        }
+
         return res.status(200).json({
             success: true,
             message: `Pending amount of ₹${clearAmount} successfully resolved as ${normalizedAction}`,
@@ -1939,7 +1978,7 @@ const renewStudent = async (req, res) => {
         // --- CHECK LIBRARY OWNERSHIP ---
         const library = await libraryModel
             .findOne({ _id: libraryId, ownerId: userId })
-            .select('_id')
+            .select('_id libraryName')
             .lean();
 
         if (!library) {
@@ -2131,6 +2170,42 @@ const renewStudent = async (req, res) => {
         );
 
         await session.commitTransaction();
+
+        // Send instant push notification to student phone
+        const libName = library?.libraryName || "Library";
+        const formattedExpire = parsedExpireDate ? parsedExpireDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "active";
+
+        console.log(`[PushNotification] Triggering renewal alert for student ${student.name} (${student._id})`);
+        sendPushNotificationToStudent({
+            studentId: student._id,
+            title: `🎉 ${libName} • Membership Renewed!`,
+            body: `Your membership has been renewed until ${formattedExpire}. Keep learning!`,
+            data: {
+                type: "MEMBERSHIP_RENEWED",
+                studentId: student._id.toString(),
+                expireDate: parsedExpireDate ? parsedExpireDate.toISOString() : "",
+            },
+        }).then((res) => {
+            console.log("[PushNotification] Renewal FCM send result:", res);
+        }).catch((err) => console.error("[FCM Renewal Notification Error]:", err));
+
+        // Non-blocking notification to Owner if renewal performed by staff/reception
+        if (req.appMode && req.appMode !== "admin") {
+            const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
+            sendRoleNotification({
+                libraryId,
+                targetRole: "admin",
+                performedByRole: req.appMode,
+                category: "RENEWAL",
+                title: "Student Membership Renewed",
+                message: `${staffLabel} renewed membership for ${student.name}${student.studentId ? ` (ID: ${student.studentId})` : ""}. Paid: ₹${numericPaidAmount}`,
+                data: {
+                    studentId: student._id.toString(),
+                    studentName: student.name,
+                    amount: String(numericPaidAmount),
+                },
+            }).catch((err) => console.error("[RoleNotification] Renewal notify error:", err));
+        }
 
         // [v1.0.1 - 2026-08-12] Populate seatId on updated student before sending payload
         if (updatedStudent && updatedStudent.seatId) {

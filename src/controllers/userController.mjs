@@ -771,6 +771,56 @@ const resetPassword = async (req, res) => {
     }
 };
 
+const registerDeviceToken = async (req, res) => {
+    try {
+        const userId = req.user._id || req.user.id;
+        const { fcmToken, role = "admin", deviceId } = req.body;
+
+        if (!fcmToken || typeof fcmToken !== "string" || !fcmToken.trim()) {
+            return res.status(400).json({ success: false, message: "FCM token is required." });
+        }
+
+        const cleanToken = fcmToken.trim();
+        const cleanRole = ["admin", "reception", "general"].includes(role) ? role : "admin";
+
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        if (!user.deviceTokens) {
+            user.deviceTokens = [];
+        }
+
+        // Deduplicate: filter out matching token or deviceId
+        user.deviceTokens = user.deviceTokens.filter(
+            (d) => d.fcmToken !== cleanToken && (!deviceId || d.deviceId !== deviceId)
+        );
+
+        user.deviceTokens.push({
+            fcmToken: cleanToken,
+            role: cleanRole,
+            deviceId: deviceId || null,
+            updatedAt: new Date(),
+        });
+
+        await user.save();
+
+        console.log(`[DeviceToken] Successfully registered token for user ${user._id} with role "${cleanRole}". Total tokens: ${user.deviceTokens.length}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Device token registered successfully.",
+        });
+    } catch (error) {
+        console.error("REGISTER DEVICE TOKEN ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to register device token.",
+        });
+    }
+};
+
 export {
     signupUser,
     loginUser,
@@ -783,5 +833,7 @@ export {
     getSubscriptionStatus,
     sendForgotPasswordOtp,
     verifyForgotPasswordOtp,
-    resetPassword
+    resetPassword,
+    registerDeviceToken,
 }
+

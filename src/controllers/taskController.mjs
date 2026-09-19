@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { libraryModel } from "../models/libraryModel.mjs";
 import { taskModel } from "../models/taskModel.mjs";
+import { sendRoleNotification } from "../services/pushNotificationService.mjs";
 
 
 const addTask = async (req, res) => {
@@ -106,6 +107,24 @@ const addTask = async (req, res) => {
       assignedToRole,
     });
 
+    // Trigger notification if assigned to a different role
+    if (assignedToRole !== createdByMode) {
+      const senderLabel = createdByMode === "reception" ? "Reception" : "Owner";
+      sendRoleNotification({
+        libraryId: library._id,
+        targetRole: assignedToRole,
+        performedByRole: createdByMode,
+        category: "TASK",
+        title: "New Task Assigned",
+        message: `${senderLabel} assigned you a task: "${cleanTitle}".`,
+        data: {
+          taskId: task._id.toString(),
+          title: cleanTitle,
+          urgency: cleanUrgency,
+        },
+      }).catch((err) => console.error("[RoleNotification] Task assign notify error:", err));
+    }
+
     return res.status(201).json({
       success: true,
       message: "Task created successfully",
@@ -205,6 +224,25 @@ const completeTask = async (req, res) => {
         message: "Task not found or already completed",
       });
     }
+
+    // Trigger notification to the opposite role when task completed
+    const completedByRole = req.appMode === "reception" ? "reception" : "admin";
+    const targetRole = completedByRole === "reception" ? "admin" : (task.assignedToRole === "admin" ? "reception" : "admin");
+    const completedByLabel = completedByRole === "reception" ? "Reception" : "Owner";
+
+    sendRoleNotification({
+      libraryId: library._id,
+      targetRole,
+      performedByRole: completedByRole,
+      category: "TASK_COMPLETED",
+      title: "Task Completed",
+      message: `${completedByLabel} completed the task: "${task.title}".`,
+      data: {
+        taskId: task._id.toString(),
+        title: task.title,
+        libraryId: library._id.toString(),
+      },
+    }).catch((err) => console.error("[RoleNotification] Task complete notify error:", err));
 
     return res.status(200).json({
       success: true,

@@ -185,6 +185,19 @@ const studentSchema = new mongoose.Schema(
             default: null,
         },
 
+        // PUSH NOTIFICATIONS
+        fcmToken: {
+            type: String,
+            trim: true,
+            default: null,
+            index: true,
+        },
+
+        fcmTokenUpdatedAt: {
+            type: Date,
+            default: null,
+        },
+
         // OTHER
         notes: {
             type: String,

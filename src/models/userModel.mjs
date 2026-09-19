@@ -132,6 +132,15 @@ const userSchema = new mongoose.Schema(
             default: null
         },
 
+        deviceTokens: [
+            {
+                fcmToken: { type: String, required: true },
+                role: { type: String, enum: ["admin", "reception", "general"], default: "admin" },
+                deviceId: { type: String, default: null },
+                updatedAt: { type: Date, default: Date.now },
+            }
+        ],
+
         refreshToken: {
             type: String,
             select: false,

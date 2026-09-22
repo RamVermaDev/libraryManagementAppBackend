@@ -792,7 +792,7 @@ const registerDeviceToken = async (req, res) => {
             user.deviceTokens = [];
         }
 
-        // Deduplicate: filter out matching token or deviceId
+        // Deduplicate: filter out matching token or deviceId for current user
         user.deviceTokens = user.deviceTokens.filter(
             (d) => d.fcmToken !== cleanToken && (!deviceId || d.deviceId !== deviceId)
         );
@@ -806,6 +806,12 @@ const registerDeviceToken = async (req, res) => {
 
         await user.save();
 
+        // Critical: Remove this token from ALL other users so notifications never leak across accounts
+        await userModel.updateMany(
+            { _id: { $ne: user._id } },
+            { $pull: { deviceTokens: { fcmToken: cleanToken } } }
+        );
+
         console.log(`[DeviceToken] Successfully registered token for user ${user._id} with role "${cleanRole}". Total tokens: ${user.deviceTokens.length}`);
 
         return res.status(200).json({
@@ -817,6 +823,32 @@ const registerDeviceToken = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to register device token.",
+        });
+    }
+};
+
+const removeDeviceToken = async (req, res) => {
+    try {
+        const userId = req.user._id || req.user.id;
+        const { fcmToken } = req.body;
+
+        if (fcmToken && typeof fcmToken === "string") {
+            const cleanToken = fcmToken.trim();
+            await userModel.findByIdAndUpdate(userId, {
+                $pull: { deviceTokens: { fcmToken: cleanToken } }
+            });
+            console.log(`[DeviceToken] Removed token for user ${userId}`);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Device token removed successfully.",
+        });
+    } catch (error) {
+        console.error("REMOVE DEVICE TOKEN ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to remove device token.",
         });
     }
 };
@@ -835,5 +867,6 @@ export {
     verifyForgotPasswordOtp,
     resetPassword,
     registerDeviceToken,
+    removeDeviceToken,
 }
 

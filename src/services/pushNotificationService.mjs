@@ -192,6 +192,8 @@ export const sendRoleNotification = async ({
         for (const [k, v] of Object.entries(data)) {
             stringifiedData[k] = String(v);
         }
+        stringifiedData.libraryId = String(libraryId);
+        stringifiedData.libraryName = String(library.libraryName || "");
         stringifiedData.title = String(title);
         stringifiedData.body = String(message);
         stringifiedData.type = String(category);

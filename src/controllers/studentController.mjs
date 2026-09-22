@@ -149,7 +149,7 @@ const addStudent = async (req, res) => {
                 _id: libraryId,
                 ownerId: userId,
             })
-            .select("_id")
+            .select("_id libraryName")
             .lean();
 
         if (!library) {
@@ -552,14 +552,17 @@ const addStudent = async (req, res) => {
         // Non-blocking notification to Owner if admission performed by staff/reception
         if (req.appMode && req.appMode !== "admin") {
             const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
+            const libName = library?.libraryName || "Library";
             sendRoleNotification({
                 libraryId,
                 targetRole: "admin",
                 performedByRole: req.appMode,
                 category: "ADMISSION",
-                title: "New Student Admission",
+                title: `${libName} • New Admission`,
                 message: `${staffLabel} admitted ${student.name}${finalStudentId ? ` (ID: ${finalStudentId})` : ""}. Paid: ₹${numericPaidAmount}`,
                 data: {
+                    libraryId: libraryId.toString(),
+                    libraryName: libName,
                     studentId: student._id.toString(),
                     studentName: student.name,
                     amount: String(numericPaidAmount),
@@ -2197,9 +2200,11 @@ const renewStudent = async (req, res) => {
                 targetRole: "admin",
                 performedByRole: req.appMode,
                 category: "RENEWAL",
-                title: "Student Membership Renewed",
+                title: `${libName} • Membership Renewed`,
                 message: `${staffLabel} renewed membership for ${student.name}${student.studentId ? ` (ID: ${student.studentId})` : ""}. Paid: ₹${numericPaidAmount}`,
                 data: {
+                    libraryId: libraryId.toString(),
+                    libraryName: libName,
                     studentId: student._id.toString(),
                     studentName: student.name,
                     amount: String(numericPaidAmount),

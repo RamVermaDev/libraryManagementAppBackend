@@ -116,6 +116,7 @@ const addStudent = async (req, res) => {
             onlineAmount = 0,
             paymentMode,
             notes,
+            paymentDate,
         } = req.body;
 
 
@@ -225,6 +226,7 @@ const addStudent = async (req, res) => {
 
         const parsedStartDate = startOfDay(startDate);
         const parsedExpireDate = endOfDay(expireDate);
+        const parsedPaymentDate = paymentDate && !isNaN(new Date(paymentDate).getTime()) ? new Date(paymentDate) : new Date();
 
         console.log(startDate);
         console.log(parsedStartDate);
@@ -414,7 +416,7 @@ const addStudent = async (req, res) => {
                     totalDiscount: numericDiscount,
 
                     lastPaymentDate:
-                        numericPaidAmount > 0 ? new Date() : null,
+                        numericPaidAmount > 0 ? parsedPaymentDate : null,
 
                     notes: notes?.trim() || null,
                 },
@@ -470,7 +472,8 @@ const addStudent = async (req, res) => {
                                 amount: numericCash,
                                 paymentMode: "Cash",
                                 tracker: "credit",
-                                paymentDate: new Date(),
+                                paymentDate: parsedPaymentDate,
+                                note: notes?.trim() || null,
                             },
                         ],
                         { session }
@@ -488,7 +491,8 @@ const addStudent = async (req, res) => {
                                 amount: numericOnline,
                                 paymentMode: "Online",
                                 tracker: "credit",
-                                paymentDate: new Date(),
+                                paymentDate: parsedPaymentDate,
+                                note: notes?.trim() || null,
                             },
                         ],
                         { session }
@@ -508,7 +512,8 @@ const addStudent = async (req, res) => {
                             amount: numericPaidAmount,
                             paymentMode,
                             tracker: "credit",
-                            paymentDate: new Date(),
+                            paymentDate: parsedPaymentDate,
+                            note: notes?.trim() || null,
                         },
                     ],
                     { session }
@@ -1913,6 +1918,7 @@ const renewStudent = async (req, res) => {
             onlineAmount = 0,
             paymentMode,
             notes,
+            paymentDate,
         } = req.body;
 
         // --- VALIDATE IDs ---
@@ -1959,6 +1965,7 @@ const renewStudent = async (req, res) => {
         // --- PARSE + VALIDATE DATES ---
         const parsedStartDate = startOfDay(startDate);
         const parsedExpireDate = endOfDay(expireDate);
+        const parsedPaymentDate = paymentDate && !isNaN(new Date(paymentDate).getTime()) ? new Date(paymentDate) : new Date();
 
         if (Number.isNaN(parsedStartDate.getTime()) || Number.isNaN(parsedExpireDate.getTime())) {
             return res.status(400).json({ success: false, message: 'Invalid start or expire date' });
@@ -2100,7 +2107,7 @@ const renewStudent = async (req, res) => {
                                 feeRecord: feeRecord._id,
                                 amount: numericCash,
                                 paymentMode: "Cash",
-                                paymentDate: new Date(),
+                                paymentDate: parsedPaymentDate,
                                 tracker: 'credit',
                                 note: notes?.trim() || null,
                             },
@@ -2119,7 +2126,7 @@ const renewStudent = async (req, res) => {
                                 feeRecord: feeRecord._id,
                                 amount: numericOnline,
                                 paymentMode: "Online",
-                                paymentDate: new Date(),
+                                paymentDate: parsedPaymentDate,
                                 tracker: 'credit',
                                 note: notes?.trim() || null,
                             },
@@ -2139,7 +2146,7 @@ const renewStudent = async (req, res) => {
                             feeRecord: feeRecord._id,
                             amount: numericPaidAmount,
                             paymentMode,
-                            paymentDate: new Date(),
+                            paymentDate: parsedPaymentDate,
                             tracker: 'credit',
                             note: notes?.trim() || null,
                         },
@@ -2166,7 +2173,7 @@ const renewStudent = async (req, res) => {
                     totalDiscount: numericDiscount,
                 },
                 totalPending: pendingAmount,
-                ...(numericPaidAmount > 0 && { lastPaymentDate: new Date() }),
+                ...(numericPaidAmount > 0 && { lastPaymentDate: parsedPaymentDate }),
                 ...(notes?.trim() && { notes: notes.trim() }),
             },
             { new: true, session }

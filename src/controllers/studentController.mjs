@@ -387,6 +387,8 @@ const addStudent = async (req, res) => {
 
         session.startTransaction();
 
+        const hasFollowUp = Boolean(parsedFollowUpDate || (followUpNote && followUpNote.trim()));
+
         // 10. CREATE STUDENT
 
         const [student] = await studentModel.create(
@@ -424,12 +426,10 @@ const addStudent = async (req, res) => {
 
                     notes: notes?.trim() || null,
 
-                    followUpDate: parsedFollowUpDate,
-                    followUpNote: followUpNote?.trim() || null,
-                    followUpCategory: parsedFollowUpDate
-                        ? (followUpCategory || (pendingAmount > 0 ? "Fee Promise" : null))
-                        : (pendingAmount > 0 && followUpCategory ? followUpCategory : null),
-                    followUpSetAt: parsedFollowUpDate ? new Date() : null,
+                    followUpDate: hasFollowUp ? (parsedFollowUpDate || new Date()) : null,
+                    followUpNote: hasFollowUp ? (followUpNote?.trim() || null) : null,
+                    followUpCategory: hasFollowUp ? (followUpCategory || "Fee Promise") : null,
+                    followUpSetAt: hasFollowUp ? new Date() : null,
                 },
             ],
             { session }

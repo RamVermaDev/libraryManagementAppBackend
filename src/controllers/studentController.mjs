@@ -117,6 +117,9 @@ const addStudent = async (req, res) => {
             paymentMode,
             notes,
             paymentDate,
+            followUpDate,
+            followUpNote,
+            followUpCategory,
         } = req.body;
 
 
@@ -227,6 +230,7 @@ const addStudent = async (req, res) => {
         const parsedStartDate = startOfDay(startDate);
         const parsedExpireDate = endOfDay(expireDate);
         const parsedPaymentDate = paymentDate && !isNaN(new Date(paymentDate).getTime()) ? new Date(paymentDate) : new Date();
+        const parsedFollowUpDate = followUpDate && !isNaN(new Date(followUpDate).getTime()) ? new Date(followUpDate) : null;
 
         console.log(startDate);
         console.log(parsedStartDate);
@@ -419,6 +423,13 @@ const addStudent = async (req, res) => {
                         numericPaidAmount > 0 ? parsedPaymentDate : null,
 
                     notes: notes?.trim() || null,
+
+                    followUpDate: parsedFollowUpDate,
+                    followUpNote: followUpNote?.trim() || null,
+                    followUpCategory: parsedFollowUpDate
+                        ? (followUpCategory || (pendingAmount > 0 ? "Fee Promise" : null))
+                        : (pendingAmount > 0 && followUpCategory ? followUpCategory : null),
+                    followUpSetAt: parsedFollowUpDate ? new Date() : null,
                 },
             ],
             { session }

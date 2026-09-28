@@ -675,11 +675,10 @@ const getStudents = async (req, res) => {
             });
         }
 
-        // 6. FETCH STUDENTS — exclude paused (they appear in Follow Up tab only)
+        // 6. FETCH ALL STUDENTS (including paused, active, expired)
         const students = await studentModel
             .find({
                 libraryId: libraryId,
-                status: { $ne: 'paused' },
             })
             .populate("seatId", "label seatNumber")
             .sort({
@@ -2793,7 +2792,7 @@ const setStudentFollowUp = async (req, res) => {
     try {
         const userId = req.user.id;
         const { libraryId, studentId } = req.params;
-        const { note, followUpDate } = req.body;
+        const { note, followUpDate, category } = req.body;
 
         if (!mongoose.Types.ObjectId.isValid(libraryId) || !mongoose.Types.ObjectId.isValid(studentId)) {
             return res.status(400).json({ success: false, message: 'Invalid ID' });
@@ -2810,6 +2809,7 @@ const setStudentFollowUp = async (req, res) => {
         if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
 
         student.followUpNote = note?.trim() || null;
+        student.followUpCategory = category?.trim() || null;
         student.followUpDate = new Date(followUpDate);
         student.followUpSetAt = new Date();
         await student.save();
@@ -2842,6 +2842,7 @@ const clearStudentFollowUp = async (req, res) => {
         if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
 
         student.followUpNote = null;
+        student.followUpCategory = null;
         student.followUpDate = null;
         student.followUpSetAt = null;
         await student.save();

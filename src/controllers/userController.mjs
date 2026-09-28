@@ -50,9 +50,38 @@ const signupUser = async (req, res) => {
             }
         });
 
+        const accessToken = jwt.sign(
+            {
+                userId: user._id,
+                email: user.email
+            },
+            JWT_SECRET,
+        );
+
+        user.lastLoginAt = new Date();
+        user.lastLoginIP = req.ip;
+        user.lastDevice = req.get("User-Agent");
+        await user.save();
+
         return res.status(201).json({
             success: true,
             message: "Account created successfully.",
+            token: accessToken,
+            isFirstLogin: true,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                isEmailVerified: user.isEmailVerified,
+                libraries: user.libraries ?? [],
+                createdAt: user.createdAt,
+                subscription: {
+                    plan: user.subscription?.plan ?? 'trial',
+                    status: user.subscription?.status ?? 'trial',
+                    startAt: user.subscription?.startAt ?? null,
+                    endAt: user.subscription?.endAt ?? null,
+                }
+            },
             data: {
                 id: user._id,
                 name: user.name,

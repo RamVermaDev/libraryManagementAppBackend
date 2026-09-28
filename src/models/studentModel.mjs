@@ -124,6 +124,12 @@ const studentSchema = new mongoose.Schema(
             default: null,
         },
 
+        followUpCategory: {
+            type: String,
+            enum: ['Fee Promise', 'Renewal', 'Come Back', 'General', null],
+            default: null,
+        },
+
         followUpDate: {
             type: Date,
             default: null,

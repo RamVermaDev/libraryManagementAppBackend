@@ -1,7 +1,7 @@
 import express from 'express'
 import { appModeMiddleware } from './middleware/appModeMiddleware.mjs'
 import { checkSubscription } from './middleware/checkSubscription.mjs'
-import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword, registerDeviceToken, removeDeviceToken } from './controllers/userController.mjs'
+import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword, registerDeviceToken, removeDeviceToken, getActiveDevices, logoutOtherDevices } from './controllers/userController.mjs'
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees, updateAdmissionFields } from './controllers/libraryController.mjs'
 import { authenticate, optionalAuthenticate } from './auth/authorization.mjs'
@@ -47,6 +47,8 @@ routes.post('/api/verify-admin-otp', authenticate, verifyAdminModeOtp)
 routes.get('/api/verify-token', authenticate, getCurrentUser)
 routes.post('/api/users/device-token', authenticate, registerDeviceToken)
 routes.post('/api/users/remove-device-token', authenticate, removeDeviceToken)
+routes.get('/api/users/devices', authenticate, getActiveDevices)
+routes.post('/api/users/logout-other-devices', authenticate, logoutOtherDevices)
 routes.get('/api/subscription/status', authenticate, getSubscriptionStatus)
 routes.post('/api/subscription/create-order', authenticate, createSubscriptionOrder)
 routes.post('/api/subscription/verify-payment', authenticate, verifySubscriptionPayment)

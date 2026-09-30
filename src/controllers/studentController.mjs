@@ -565,26 +565,27 @@ const addStudent = async (req, res) => {
         // 13. COMMIT TRANSACTION
         await session.commitTransaction();
 
-        // Non-blocking notification to Owner if admission performed by staff/reception
-        if (req.appMode && req.appMode !== "admin") {
-            const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
-            const libName = library?.libraryName || "Library";
-            sendRoleNotification({
-                libraryId,
-                targetRole: "admin",
-                performedByRole: req.appMode,
-                category: "ADMISSION",
-                title: `${libName} • New Admission`,
-                message: `${staffLabel} admitted ${student.name}${finalStudentId ? ` (ID: ${finalStudentId})` : ""}. Paid: ₹${numericPaidAmount}`,
-                data: {
-                    libraryId: libraryId.toString(),
-                    libraryName: libName,
-                    studentId: student._id.toString(),
-                    studentName: student.name,
-                    amount: String(numericPaidAmount),
-                },
-            }).catch((err) => console.error("[RoleNotification] Admission notify error:", err));
-        }
+        // Non-blocking notification to other Admin devices / Owner
+        const staffLabel = req.appMode === "reception" ? "Reception" : (req.appMode === "general" ? "Staff" : "Admin");
+        const libName = library?.libraryName || "Library";
+        const senderFcmToken = req.headers["x-fcm-token"] || null;
+
+        sendRoleNotification({
+            libraryId,
+            targetRole: "admin",
+            performedByRole: req.appMode || "admin",
+            excludeToken: senderFcmToken,
+            category: "ADMISSION",
+            title: `${libName} • New Admission`,
+            message: `${staffLabel} admitted ${student.name}${finalStudentId ? ` (ID: ${finalStudentId})` : ""}. Paid: ₹${numericPaidAmount}`,
+            data: {
+                libraryId: libraryId.toString(),
+                libraryName: libName,
+                studentId: student._id.toString(),
+                studentName: student.name,
+                amount: String(numericPaidAmount),
+            },
+        }).catch((err) => console.error("[RoleNotification] Admission notify error:", err));
 
         // [v1.0.1 - 2026-08-12] Populate seatId on newly created student before sending payload
         if (student.seatId) {
@@ -2219,25 +2220,26 @@ const renewStudent = async (req, res) => {
             console.log("[PushNotification] Renewal FCM send result:", res);
         }).catch((err) => console.error("[FCM Renewal Notification Error]:", err));
 
-        // Non-blocking notification to Owner if renewal performed by staff/reception
-        if (req.appMode && req.appMode !== "admin") {
-            const staffLabel = req.appMode === "reception" ? "Reception" : "Staff";
-            sendRoleNotification({
-                libraryId,
-                targetRole: "admin",
-                performedByRole: req.appMode,
-                category: "RENEWAL",
-                title: `${libName} • Membership Renewed`,
-                message: `${staffLabel} renewed membership for ${student.name}${student.studentId ? ` (ID: ${student.studentId})` : ""}. Paid: ₹${numericPaidAmount}`,
-                data: {
-                    libraryId: libraryId.toString(),
-                    libraryName: libName,
-                    studentId: student._id.toString(),
-                    studentName: student.name,
-                    amount: String(numericPaidAmount),
-                },
-            }).catch((err) => console.error("[RoleNotification] Renewal notify error:", err));
-        }
+        // Non-blocking notification to other Admin devices / Owner
+        const renewStaffLabel = req.appMode === "reception" ? "Reception" : (req.appMode === "general" ? "Staff" : "Admin");
+        const renewSenderFcmToken = req.headers["x-fcm-token"] || null;
+
+        sendRoleNotification({
+            libraryId,
+            targetRole: "admin",
+            performedByRole: req.appMode || "admin",
+            excludeToken: renewSenderFcmToken,
+            category: "RENEWAL",
+            title: `${libName} • Membership Renewed`,
+            message: `${renewStaffLabel} renewed membership for ${student.name}${student.studentId ? ` (ID: ${student.studentId})` : ""}. Paid: ₹${numericPaidAmount}`,
+            data: {
+                libraryId: libraryId.toString(),
+                libraryName: libName,
+                studentId: student._id.toString(),
+                studentName: student.name,
+                amount: String(numericPaidAmount),
+            },
+        }).catch((err) => console.error("[RoleNotification] Renewal notify error:", err));
 
         // [v1.0.1 - 2026-08-12] Populate seatId on updated student before sending payload
         if (updatedStudent && updatedStudent.seatId) {

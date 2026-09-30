@@ -803,7 +803,7 @@ const resetPassword = async (req, res) => {
 const registerDeviceToken = async (req, res) => {
     try {
         const userId = req.user._id || req.user.id;
-        const { fcmToken, role = "admin", deviceId } = req.body;
+        const { fcmToken, role = "admin", deviceId, deviceName } = req.body;
 
         if (!fcmToken || typeof fcmToken !== "string" || !fcmToken.trim()) {
             return res.status(400).json({ success: false, message: "FCM token is required." });
@@ -811,6 +811,9 @@ const registerDeviceToken = async (req, res) => {
 
         const cleanToken = fcmToken.trim();
         const cleanRole = ["admin", "reception", "general"].includes(role) ? role : "admin";
+        const cleanDeviceName = (deviceName && typeof deviceName === "string" && deviceName.trim())
+            ? deviceName.trim()
+            : "Mobile Device";
 
         const user = await userModel.findById(userId);
         if (!user) {
@@ -830,6 +833,8 @@ const registerDeviceToken = async (req, res) => {
             fcmToken: cleanToken,
             role: cleanRole,
             deviceId: deviceId || null,
+            deviceName: cleanDeviceName,
+            lastActiveAt: new Date(),
             updatedAt: new Date(),
         });
 
@@ -841,7 +846,7 @@ const registerDeviceToken = async (req, res) => {
             { $pull: { deviceTokens: { fcmToken: cleanToken } } }
         );
 
-        console.log(`[DeviceToken] Successfully registered token for user ${user._id} with role "${cleanRole}". Total tokens: ${user.deviceTokens.length}`);
+        console.log(`[DeviceToken] Successfully registered token for user ${user._id} (${cleanDeviceName}) with role "${cleanRole}". Total tokens: ${user.deviceTokens.length}`);
 
         return res.status(200).json({
             success: true,
@@ -852,6 +857,109 @@ const registerDeviceToken = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Failed to register device token.",
+        });
+    }
+};
+
+const getActiveDevices = async (req, res) => {
+    try {
+        const userId = req.user._id || req.user.id;
+        const user = await userModel.findById(userId).select("deviceTokens role");
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        const currentDeviceId = req.headers["x-device-id"] || req.query.deviceId;
+        const currentFcmToken = req.headers["x-fcm-token"] || req.query.fcmToken;
+
+        const devices = (user.deviceTokens || []).map((d) => {
+            const isCurrent = (currentDeviceId && d.deviceId && d.deviceId === currentDeviceId) ||
+                              (currentFcmToken && d.fcmToken && d.fcmToken === currentFcmToken);
+            return {
+                id: d._id,
+                deviceId: d.deviceId || null,
+                deviceName: d.deviceName || "Mobile Device",
+                role: d.role || "admin",
+                lastActiveAt: d.lastActiveAt || d.updatedAt || new Date(),
+                isCurrentDevice: !!isCurrent,
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            totalDevices: devices.length,
+            devices,
+        });
+    } catch (error) {
+        console.error("GET ACTIVE DEVICES ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch active devices.",
+        });
+    }
+};
+
+const logoutOtherDevices = async (req, res) => {
+    try {
+        const userId = req.user._id || req.user.id;
+        
+        // Strict Admin check: user role or active app mode must be admin
+        const appMode = (req.headers["x-app-mode"] || "").toLowerCase();
+        const isAdmin = req.user.role === "admin" || appMode === "admin";
+
+        if (!isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied. Only Admin can log out other devices.",
+            });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found." });
+        }
+
+        const { currentDeviceId, currentFcmToken } = req.body;
+
+        if (!user.deviceTokens || user.deviceTokens.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "No other devices to log out.",
+                remainingDevices: 0,
+            });
+        }
+
+        // Keep only current device if matched
+        let remainingTokens = [];
+        if (currentDeviceId || currentFcmToken) {
+            remainingTokens = user.deviceTokens.filter(
+                (d) => (currentDeviceId && d.deviceId === currentDeviceId) ||
+                       (currentFcmToken && d.fcmToken === currentFcmToken)
+            );
+        }
+
+        // If current device wasn't explicitly matched, preserve the newest one so admin doesn't lock themselves out
+        if (remainingTokens.length === 0 && user.deviceTokens.length > 0) {
+            const sorted = [...user.deviceTokens].sort((a, b) => new Date(b.updatedAt || b.lastActiveAt || 0) - new Date(a.updatedAt || a.lastActiveAt || 0));
+            remainingTokens = [sorted[0]];
+        }
+
+        const removedCount = user.deviceTokens.length - remainingTokens.length;
+        user.deviceTokens = remainingTokens;
+        await user.save();
+
+        console.log(`[DeviceToken] Admin ${userId} logged out ${removedCount} other device(s). Remaining: ${remainingTokens.length}`);
+
+        return res.status(200).json({
+            success: true,
+            message: `Successfully logged out ${removedCount} other device${removedCount === 1 ? '' : 's'}.`,
+            remainingDevices: remainingTokens.length,
+        });
+    } catch (error) {
+        console.error("LOGOUT OTHER DEVICES ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to log out other devices.",
         });
     }
 };
@@ -897,5 +1005,7 @@ export {
     resetPassword,
     registerDeviceToken,
     removeDeviceToken,
+    getActiveDevices,
+    logoutOtherDevices,
 }
 

@@ -138,6 +138,7 @@ export const sendRoleNotification = async ({
     libraryId,
     targetRole = "admin", // 'admin' or 'reception'
     performedByRole = "admin",
+    excludeToken = null,
     category = "ALERT",
     title,
     message,
@@ -176,7 +177,8 @@ export const sendRoleNotification = async ({
 
         const tokens = ownerTokens
             .filter((d) => (d.role === targetRole || (targetRole === "admin" && !d.role)) && d.fcmToken && d.fcmToken.trim().length > 10)
-            .map((d) => d.fcmToken.trim());
+            .map((d) => d.fcmToken.trim())
+            .filter((token) => !excludeToken || token !== excludeToken);
 
         const uniqueTokens = [...new Set(tokens)];
 

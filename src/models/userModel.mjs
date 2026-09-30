@@ -137,6 +137,8 @@ const userSchema = new mongoose.Schema(
                 fcmToken: { type: String, required: true },
                 role: { type: String, enum: ["admin", "reception", "general"], default: "admin" },
                 deviceId: { type: String, default: null },
+                deviceName: { type: String, default: "Mobile Device" },
+                lastActiveAt: { type: Date, default: Date.now },
                 updatedAt: { type: Date, default: Date.now },
             }
         ],

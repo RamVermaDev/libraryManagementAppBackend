@@ -28,6 +28,16 @@ const librarySchema = new mongoose.Schema({
         default: ""
     },
 
+    logo: {
+        type: String,
+        default: null
+    },
+
+    logoPublicId: {
+        type: String,
+        default: null
+    },
+
     whatsappNumber: {
         type: String,
         required: true,

@@ -9,6 +9,9 @@ import { taskModel } from "../models/taskModel.mjs";
 import { bookIssueModel } from "../models/bookIssueModel.mjs";
 import { slotTemplateModel } from "../claude/SlotTemplateModel.mjs";
 import { reservationModel } from "../claude/ReservationModel.mjs";
+import { bookModel } from "../models/bookModel.mjs";
+import { noticeModel } from "../models/noticeModel.mjs";
+import { libraryModel } from "../models/libraryModel.mjs";
 import sendEmail from "../utils/sendEmail.mjs";
 
 /**
@@ -443,11 +446,15 @@ export const clearLibraryData = async (req, res) => {
             await slotTemplateModel.deleteMany({ libraryId }, { session });
             await taskModel.deleteMany({ libraryId }, { session });
             await bookIssueModel.deleteMany({ libraryId }, { session });
+            await bookModel.deleteMany({ libraryId }, { session });
+            await noticeModel.deleteMany({ libraryId }, { session });
+            await seatModel.updateMany({ libraryId }, { status: "active" }, { session });
+            await libraryModel.findByIdAndUpdate(libraryId, { totalStudents: 0 }, { session });
         });
 
         return res.status(200).json({
             success: true,
-            message: "Library data reset complete! Removed all students, payments, fee records, reservations, and reset all seats to available."
+            message: "Library data reset complete! Removed all students, payments, fee records, reservations, books, notices, and reset all seats to active."
         });
     } catch (error) {
         console.error("Session Transaction Error, attempting fallback:", error);
@@ -461,6 +468,10 @@ export const clearLibraryData = async (req, res) => {
             await slotTemplateModel.deleteMany({ libraryId });
             await taskModel.deleteMany({ libraryId });
             await bookIssueModel.deleteMany({ libraryId });
+            await bookModel.deleteMany({ libraryId });
+            await noticeModel.deleteMany({ libraryId });
+            await seatModel.updateMany({ libraryId }, { status: "active" });
+            await libraryModel.findByIdAndUpdate(libraryId, { totalStudents: 0 });
 
             return res.status(200).json({
                 success: true,

@@ -2018,6 +2018,13 @@ const renewStudent = async (req, res) => {
             });
         }
 
+        if (student.status === 'paused') {
+            return res.status(400).json({
+                success: false,
+                message: 'Student is currently paused. Please resume the student before renewing admission.',
+            });
+        }
+
         // --- FIND CURRENT ACTIVE RESERVATION ---
         const activeReservation = await reservationModel.findOne({
             studentId: student._id,
@@ -2172,6 +2179,9 @@ const renewStudent = async (req, res) => {
         const updatedStudent = await studentModel.findByIdAndUpdate(
             student._id,
             {
+                status: 'active',
+                pausedAt: null,
+                pauseReason: null,
                 slotTemplateId,
                 slotTiming: formatSlotTiming(slotTemplate.startMinute, slotTemplate.endMinute),
                 seatId: seatId || null,

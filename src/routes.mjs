@@ -4,7 +4,7 @@ import { checkSubscription } from './middleware/checkSubscription.mjs'
 import { getCurrentUser, loginUser, sendAdminModeOtp, sendEmailVerificationOtp, signupUser, updateProfile, verifyAdminModeOtp, verifyEmailOtp, getSubscriptionStatus, sendForgotPasswordOtp, verifyForgotPasswordOtp, resetPassword, registerDeviceToken, removeDeviceToken } from './controllers/userController.mjs'
 import { createSubscriptionOrder, verifySubscriptionPayment, handleRazorpayWebhook, submitManualPayment } from './controllers/subscriptionController.mjs'
 import { createLibrary, getOwnerLibraries, updateLibrary, updateAdditionalFees, updateAdmissionFields } from './controllers/libraryController.mjs'
-import { authenticate } from './auth/authorization.mjs'
+import { authenticate, optionalAuthenticate } from './auth/authorization.mjs'
 import { addStudent, clearStudentPending, getActiveStudents, getExpiredStudents, getExpiringStudents, getPendingStudents, getPausedStudents, getFollowUpStudents, getTodayBirthdayStudents, getBookIssuedStudents, setStudentFollowUp, clearStudentFollowUp, getStudents, getStudentSummary, updateStudentProfile, refundStudent, renewStudent, pauseStudent, resumeStudent, blacklistStudent, unblockStudent, deleteStudent, globalSearchStudents, getStudentFeeRecords, editStudentAdmission, getNextStudentId, checkStudentIdAvailability } from './controllers/studentController.mjs'
 import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './controllers/taskController.mjs'
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
@@ -20,6 +20,7 @@ import { deleteImage, uploadImage } from './controllers/uploadController.mjs'
 import { bulkImportStudents, clearLibraryData, downloadSampleTemplate, emailSampleTemplate } from './controllers/bulkImportController.mjs'
 import { addBook, getBooks, updateBook, deleteBook, issueBook, returnBook, getBookIssues, getStudentBookIssues } from './controllers/bookController.mjs'
 import { createNotice, getLibraryNotices, deleteNotice, getRoleAlerts, markAlertAsRead, markAllAlertsAsRead } from './controllers/noticeController.mjs'
+import { getLatestAppVersion, setAppVersion, broadcastAppUpdate } from './controllers/appVersionController.mjs'
 
 
 
@@ -100,33 +101,33 @@ routes.post('/api/addexpense', authenticate, checkSubscription, addExpense)
 routes.delete('/api/deleteexpense/:expenseId', authenticate, deleteExpense)
 
 //API related to DASHBOARD
-routes.get("/api/:libraryId/dashboard", dashboard);
-routes.get("/api/:libraryId/getmonthlyrevenue", getMonthlyRevenue);
+routes.get("/api/:libraryId/dashboard", authenticate, dashboard);
+routes.get("/api/:libraryId/getmonthlyrevenue", authenticate, getMonthlyRevenue);
 
 //API related to PAYEMENT
 routes.get("/api/:libraryId/getpayments", authenticate, getPayments);
 
 //API related to SEATS
-routes.post("/api/:libraryId/seats", createSeats); //create
-routes.post("/api/:libraryId/seats/add", addSeats); //addMore
-routes.get("/api/:libraryId/seats", listSeats); //getSeats
+routes.post("/api/:libraryId/seats", authenticate, createSeats); //create
+routes.post("/api/:libraryId/seats/add", authenticate, addSeats); //addMore
+routes.get("/api/:libraryId/seats", authenticate, listSeats); //getSeats
 routes.get("/api/:libraryId/seats/config", authenticate, getSeatConfig);
 routes.patch("/api/:libraryId/seats/config", authenticate, updateSeatConfig);
-routes.patch("/api/seats/:seatId/status", updateSeatStatus); //status
+routes.patch("/api/seats/:seatId/status", authenticate, updateSeatStatus); //status
 
 
 //API related to SLOTS
 routes.post("/api/:libraryId/slot", authenticate, checkSubscription, createSlot)
-routes.get("/api/:libraryId/slots", listSlots)
-routes.patch("/api/:slotId/status", updateSlotStatus)
+routes.get("/api/:libraryId/slots", authenticate, listSlots)
+routes.patch("/api/:slotId/status", authenticate, updateSlotStatus)
 routes.patch("/api/:slotId/editslot", authenticate, checkSubscription, editSlot)
-routes.delete("/api/:slotId/deleteslot", deleteSlot)
+routes.delete("/api/:slotId/deleteslot", authenticate, deleteSlot)
 
 // The booking-screen endpoint: shows every slot template + live seat availability
-routes.get("/api/:libraryId/slots/availability", getAvailability);
+routes.get("/api/:libraryId/slots/availability", optionalAuthenticate, getAvailability);
 
 // The seat-picker endpoint: shows every physical seat, booked vs available, for a chosen slot
-routes.get("/api/:libraryId/seat-map", getSeatMapForSlot);
+routes.get("/api/:libraryId/seat-map", optionalAuthenticate, getSeatMapForSlot);
 
 //API related to BOKING
 routes.post("/reservations", createReservation);
@@ -141,7 +142,7 @@ routes.delete("/image/delete", authenticate, deleteImage);
 //API related to BULK EXCEL IMPORT & TEMPLATE
 routes.get("/api/:libraryId/download-student-template", downloadSampleTemplate);
 routes.post("/api/:libraryId/email-student-template", authenticate, emailSampleTemplate);
-routes.post("/api/:libraryId/bulk-import-students", excelUpload.single("file"), bulkImportStudents);
+routes.post("/api/:libraryId/bulk-import-students", authenticate, excelUpload.single("file"), bulkImportStudents);
 routes.delete("/api/:libraryId/clear-library-data", authenticate, clearLibraryData);
 
 //API related to BOOKS & LENDING
@@ -163,6 +164,11 @@ routes.delete("/api/:libraryId/notices/:noticeId", authenticate, checkSubscripti
 routes.get("/api/:libraryId/alerts", authenticate, getRoleAlerts);
 routes.patch("/api/:libraryId/alerts/read-all", authenticate, markAllAlertsAsRead);
 routes.patch("/api/:libraryId/alerts/:alertId/read", authenticate, markAlertAsRead);
+
+//API related to APP VERSION & REMOTE UPDATE
+routes.get("/api/app-version", getLatestAppVersion);
+routes.post("/api/app-version", authenticate, setAppVersion);
+routes.post("/api/app/broadcast-update", authenticate, broadcastAppUpdate);
 
 export default routes;
 

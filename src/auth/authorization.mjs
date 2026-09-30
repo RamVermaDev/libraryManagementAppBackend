@@ -63,3 +63,29 @@ export const authenticate = async (req, res, next) => {
     }
 
 };
+
+export const optionalAuthenticate = async (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return next();
+        }
+
+        const token = authHeader.split(" ")[1];
+        if (!token) return next();
+
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await userModel
+            .findById(decoded.userId)
+            .select("-password -refreshToken");
+
+        if (user && !user.isDeleted && user.status === "active") {
+            req.user = user;
+        }
+
+        next();
+    } catch (error) {
+        // Fallback for legacy client versions or expired tokens without hard 401
+        next();
+    }
+};

@@ -1,6 +1,7 @@
 import cloudinary from '../../config/cloudinary.mjs'
 import streamifier from "streamifier"
 import { studentModel } from '../models/studentModel.mjs';
+import { libraryModel } from '../models/libraryModel.mjs';
 
 export const uploadImage = async (req, res) => {
     console.log("Uploading image...");
@@ -179,5 +180,71 @@ export const uploadStudentImage = async (req, res) => {
             message: "Image upload failed."
         });
 
+    }
+};
+
+export const uploadLibraryLogo = async (req, res) => {
+    try {
+        const { libraryId } = req.params;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "Logo image file is required."
+            });
+        }
+
+        const library = await libraryModel.findById(libraryId);
+        if (!library) {
+            return res.status(404).json({
+                success: false,
+                message: "Library not found."
+            });
+        }
+
+        // Delete old logo from Cloudinary if exists
+        if (library.logoPublicId) {
+            try {
+                await cloudinary.uploader.destroy(library.logoPublicId, {
+                    resource_type: "image"
+                });
+            } catch (e) {
+                console.log("Old library logo not deleted:", e.message);
+            }
+        }
+
+        const uploadResult = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: "library-management/logos",
+                    resource_type: "image",
+                },
+                (error, result) => {
+                    if (error) return reject(error);
+                    resolve(result);
+                }
+            );
+
+            streamifier
+                .createReadStream(req.file.buffer)
+                .pipe(uploadStream);
+        });
+
+        library.logo = uploadResult.secure_url;
+        library.logoPublicId = uploadResult.public_id;
+        await library.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Library logo uploaded successfully.",
+            logo: library.logo,
+            library
+        });
+    } catch (error) {
+        console.error("Upload Library Logo Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to upload library logo."
+        });
     }
 };

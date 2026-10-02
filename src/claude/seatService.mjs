@@ -1,5 +1,6 @@
 import { seatModel } from "../models/seatModel.mjs";
 import { libraryModel } from "../models/libraryModel.mjs";
+import { studentModel } from "../models/studentModel.mjs";
 import { reservationModel } from "./ReservationModel.mjs";
 
 /**
@@ -245,3 +246,92 @@ export async function setSeatStatus(seatId, status) {
 export async function deleteAllSeatsForLibrary(libraryId) {
   return seatModel.deleteMany({ libraryId });
 }
+
+/**
+ * Get visual occupancy overview for all seats in a library.
+ * Groups allotted students by physical seat, noting active and recently expired status.
+ */
+export async function getSeatOccupancyOverview(libraryId, expiredDays = 15) {
+  const numDays = expiredDays !== undefined && expiredDays !== null && !isNaN(Number(expiredDays))
+    ? Math.max(0, Number(expiredDays))
+    : 15;
+  const now = new Date();
+  const cutoffDate = numDays > 0 ? new Date(now.getTime() - numDays * 24 * 60 * 60 * 1000) : null;
+
+  const library = await libraryModel.findById(libraryId).lean();
+  if (!library) throw new Error("Library not found");
+
+  const seats = await seatModel
+    .find({ libraryId, status: "active" })
+    .sort({ seatNumber: 1 })
+    .lean();
+
+  const cols = library.seatLayout?.columns || 6;
+  const rws = library.seatLayout?.rows || (seats.length > 0 ? Math.ceil(seats.length / cols) : 1);
+
+  // Fetch all students in this library who have a seat assigned
+  const students = await studentModel
+    .find({ libraryId, seatId: { $ne: null } })
+    .lean();
+
+  const seatStudentsMap = {};
+  for (const s of students) {
+    if (!s.seatId) continue;
+    const sId = s.seatId.toString();
+    if (!seatStudentsMap[sId]) seatStudentsMap[sId] = [];
+
+    const expireDate = s.currentExpireDate ? new Date(s.currentExpireDate) : null;
+    let isExpiredRecently = false;
+    let isActive = false;
+
+    if (expireDate) {
+      if (expireDate >= now && s.status === "active") {
+        isActive = true;
+      } else if (numDays > 0 && cutoffDate && expireDate < now && expireDate >= cutoffDate) {
+        isExpiredRecently = true;
+      }
+    } else if (s.status === "active") {
+      isActive = true;
+    }
+
+    if (isActive || isExpiredRecently) {
+      const daysDiff = expireDate
+        ? Math.round((expireDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      seatStudentsMap[sId].push({
+        ...s,
+        status: isActive ? "active" : "expired",
+        daysDiff, // positive = days left, negative = days expired ago
+      });
+    }
+  }
+
+  const seatResults = seats.map((seat) => {
+    const sId = seat._id.toString();
+    const assignedStudents = seatStudentsMap[sId] || [];
+
+    // Active members first (left), expired members second (right)
+    assignedStudents.sort((a, b) => {
+      if (a.status === "active" && b.status !== "active") return -1;
+      if (a.status !== "active" && b.status === "active") return 1;
+      return 0;
+    });
+
+    return {
+      _id: seat._id,
+      seatNumber: seat.seatNumber,
+      label: seat.label,
+      students: assignedStudents,
+    };
+  });
+
+  return {
+    columns: cols,
+    rows: rws,
+    totalSeats: seats.length,
+    expiredDays: numDays,
+    seats: seatResults,
+  };
+}
+

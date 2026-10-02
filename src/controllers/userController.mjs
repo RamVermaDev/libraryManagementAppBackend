@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'
 import { userModel } from "../models/userModel.mjs";
 import { BCRYPT_SALT_ROUND, JWT_SECRET, DEFAULT_TRIAL_DAYS, MONTHLY_PRICE, YEARLY_PRICE } from "../../config.mjs";
 import sendEmail from "../utils/sendEmail.mjs";
+import { getFirebaseMessaging } from "../utils/firebaseAdmin.mjs";
 
 const signupUser = async (req, res) => {
     try {
@@ -942,6 +943,38 @@ const logoutOtherDevices = async (req, res) => {
         if (remainingTokens.length === 0 && user.deviceTokens.length > 0) {
             const sorted = [...user.deviceTokens].sort((a, b) => new Date(b.updatedAt || b.lastActiveAt || 0) - new Date(a.updatedAt || a.lastActiveAt || 0));
             remainingTokens = [sorted[0]];
+        }
+
+        // Identify tokens being revoked
+        const tokensToLogout = user.deviceTokens
+            .filter((d) => !remainingTokens.some((r) => r.fcmToken === d.fcmToken))
+            .map((d) => d.fcmToken)
+            .filter((t) => t && typeof t === "string" && t.trim().length > 10);
+
+        // Send high-priority real-time kickout push signal
+        if (tokensToLogout.length > 0) {
+            try {
+                const messaging = getFirebaseMessaging();
+                if (messaging) {
+                    messaging.sendEachForMulticast({
+                        tokens: tokensToLogout,
+                        data: {
+                            type: "FORCE_LOGOUT",
+                            title: "Session Terminated",
+                            body: "This device was logged out by the administrator.",
+                        },
+                        android: {
+                            priority: "high",
+                        },
+                    }).then((res) => {
+                        console.log(`[DeviceToken] Sent FORCE_LOGOUT signal to ${res.successCount}/${tokensToLogout.length} device(s).`);
+                    }).catch((err) => {
+                        console.error("[DeviceToken] Error sending FORCE_LOGOUT signal:", err);
+                    });
+                }
+            } catch (pushErr) {
+                console.error("[DeviceToken] FCM kickout push error:", pushErr);
+            }
         }
 
         const removedCount = user.deviceTokens.length - remainingTokens.length;

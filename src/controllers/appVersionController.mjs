@@ -12,13 +12,14 @@ export const getLatestAppVersion = async (req, res) => {
 
         if (!versionDoc) {
             versionDoc = await appVersionModel.create({
-                latestVersion: "1.3.3",
+                latestVersion: "1.3.4",
                 minSupportedVersion: "1.0.0",
                 forceUpdate: false,
                 releaseNotes: [
-                    "Custom Library Logo support",
-                    "Simplified Student Invoices (Paid & Pending)",
-                    "Performance optimizations & bug fixes",
+                    "Logged-in Devices tracking and remote session logout",
+                    "Real-time Admin-to-Admin notification alerts",
+                    "Simplified Student Invoices & cleaner receipts",
+                    "Performance improvements and stability fixes",
                 ],
                 downloadUrl: "https://play.google.com/store/apps/details?id=in.vizve.librarydesk",
             });

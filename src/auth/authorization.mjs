@@ -48,6 +48,25 @@ export const authenticate = async (req, res, next) => {
             });
         }
 
+        // Validate active device session
+        const clientFcmToken = req.headers["x-fcm-token"];
+        const isDeviceRegistrationEndpoint = req.path === "/api/users/device-token" || req.originalUrl?.includes("/api/users/device-token");
+        if (
+            clientFcmToken &&
+            !isDeviceRegistrationEndpoint &&
+            Array.isArray(user.deviceTokens) &&
+            user.deviceTokens.length > 0
+        ) {
+            const isSessionActive = user.deviceTokens.some((d) => d.fcmToken === clientFcmToken);
+            if (!isSessionActive) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Session terminated. This device was logged out by the administrator.",
+                    code: "SESSION_TERMINATED",
+                });
+            }
+        }
+
         req.user = user;
 
         next();

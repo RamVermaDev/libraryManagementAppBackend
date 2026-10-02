@@ -10,7 +10,7 @@ import { addTask, completeTask, deleteTask, editTask, getAllTasks } from './cont
 import { addExpense, deleteExpense } from './controllers/expenseController.mjs'
 import { dashboard, getMonthlyRevenue } from './revenueControllers/revenue.controller.mjs'
 import { getPayments } from './controllers/payementController.mjs'
-import { addSeats, createSeats, getSeatConfig, listSeats, updateSeatConfig, updateSeatStatus } from './claude/seatController.mjs'
+import { addSeats, createSeats, getSeatConfig, listSeats, updateSeatConfig, updateSeatStatus, getSeatOccupancyOverviewController } from './claude/seatController.mjs'
 import { createSlot, deleteSlot, editSlot, listSlots, updateSlotStatus } from './claude/slotController.mjs'
 import { getAvailability } from './claude/availabilityController.mjs'
 import { cancelReservation, editReservation, renewReservation, createReservation } from './claude/bookingController.mjs'
@@ -115,6 +115,7 @@ routes.post("/api/:libraryId/seats/add", authenticate, addSeats); //addMore
 routes.get("/api/:libraryId/seats", authenticate, listSeats); //getSeats
 routes.get("/api/:libraryId/seats/config", authenticate, getSeatConfig);
 routes.patch("/api/:libraryId/seats/config", authenticate, updateSeatConfig);
+routes.get("/api/:libraryId/seats/occupancy-overview", authenticate, getSeatOccupancyOverviewController);
 routes.patch("/api/seats/:seatId/status", authenticate, updateSeatStatus); //status
 
 

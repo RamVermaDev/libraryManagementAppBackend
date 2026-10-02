@@ -1,5 +1,5 @@
 
-import { createSeatsForLibrary, addMoreSeats, getSeatsForLibrary, setSeatStatus, getSeatConfiguration, updateSeatConfiguration } from "./seatService.mjs";
+import { createSeatsForLibrary, addMoreSeats, getSeatsForLibrary, setSeatStatus, getSeatConfiguration, updateSeatConfiguration, getSeatOccupancyOverview } from "./seatService.mjs";
 
 
 /**
@@ -128,3 +128,27 @@ export async function updateSeatConfig(req, res) {
     });
   }
 }
+
+/**
+ * GET /api/:libraryId/seats/occupancy-overview
+ * Query: expiredDays (default: 15)
+ */
+export async function getSeatOccupancyOverviewController(req, res) {
+  try {
+    const { libraryId } = req.params;
+    const { expiredDays } = req.query;
+
+    const data = await getSeatOccupancyOverview(libraryId, expiredDays);
+    return res.status(200).json({
+      success: true,
+      message: "Seat occupancy overview retrieved successfully",
+      data,
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+}
+
